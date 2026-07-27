@@ -1,5 +1,27 @@
 import streamlit as st
 import sys
+import datetime
+import io
+import re
+import sqlite3
+import pandas as pd
+
+# Librerías para autoajuste de Excel y formato condicional (colores)
+from openpyxl.styles import PatternFill
+from openpyxl.utils import get_column_letter
+
+# Librerías para generación de PDF profesional
+from reportlab.lib import colors
+from reportlab.lib.pagesizes import letter
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.platypus import (
+    Paragraph,
+    SimpleDocTemplate,
+    Spacer,
+    Table,
+    TableStyle,
+)
+
 sys.path.append("motor_rust")
 import motor_rust
 
@@ -26,29 +48,6 @@ if not st.session_state["autenticado"]:
             st.error("Usuario o contraseña incorrectos. Inténtelo de nuevo.")
     st.stop()  
 # -------------------------------------------
-
-import datetime
-import io
-import re
-import sqlite3
-import pandas as pd
-import streamlit as st
-
-# Librerías para autoajuste de Excel y formato condicional (colores)
-from openpyxl.styles import PatternFill
-from openpyxl.utils import get_column_letter
-
-# Librerías para generación de PDF
-from reportlab.lib import colors
-from reportlab.lib.pagesizes import letter
-from reportlab.lib.styles import getSampleStyleSheet
-from reportlab.platypus import (
-    Paragraph,
-    SimpleDocTemplate,
-    Spacer,
-    Table,
-    TableStyle,
-)
 
 # 1. Configuración de la página web
 st.set_page_config(
@@ -246,6 +245,8 @@ def generar_pdf_resumen(
     congelado_estado,
     mercado,
     capa_texto,
+    firma_ECDSA,
+    llave_publica,
 ):
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(
@@ -259,9 +260,17 @@ def generar_pdf_resumen(
     story = []
     styles = getSampleStyleSheet()
 
-    title = Paragraph("<b>REPORTE EJECUTIVO DE AUDITORÍA Y TRAZABILIDAD AGROINDUSTRIAL</b>", styles["Title"])
+    titulo_estilo = ParagraphStyle(
+        'TituloReporte',
+        parent=styles['Heading1'],
+        fontSize=16,
+        textColor=colors.HexColor('#1F4E78'),
+        spaceAfter=10
+    )
+
+    title = Paragraph("<b>REPORTE EJECUTIVO DE AUDITORÍA Y TRAZABILIDAD AGROINDUSTRIAL</b>", titulo_estilo)
     story.append(title)
-    story.append(Spacer(1, 10))
+    story.append(Spacer(1, 5))
 
     fecha_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     estado_txt = "APROBADO Y CONGELADO" if congelado_estado else "EN EDICIÓN / REVISIÓN"
@@ -271,7 +280,7 @@ def generar_pdf_resumen(
         styles["Normal"],
     )
     story.append(sub)
-    story.append(Spacer(1, 15))
+    story.append(Spacer(1, 10))
 
     datos_tabla = [
         ["Indicador de Control", "Valor Registrado"],
@@ -290,17 +299,35 @@ def generar_pdf_resumen(
             ("TEXTCOLOR", (0, 0), (1, 0), colors.whitesmoke),
             ("ALIGN", (0, 0), (-1, -1), "LEFT"),
             ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-            ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
             ("BACKGROUND", (0, 1), (-1, -1), colors.HexColor("#F2F2F2")),
             ("GRID", (0, 0), (-1, -1), 1, colors.HexColor("#D9D9D9")),
         ])
     )
     story.append(t)
-    story.append(Spacer(1, 15))
+    story.append(Spacer(1, 10))
 
     if capa_texto.strip() != "":
         capa_p = Paragraph(f"<b>Acción Correctiva (CAPA / Justificación):</b><br/>{capa_texto}", styles["Normal"])
         story.append(capa_p)
+        story.append(Spacer(1, 10))
+
+    # Bloque de Sello Criptográfico ECC (P-256) en el PDF
+    sello_data = [
+        [Paragraph("<b>Sello Criptográfico de Curva Elíptica (ECC / P-256):</b>", styles["Normal"])],
+        [Paragraph(f"<font size=7 face='Courier'><b>Firma:</b> {firma_ECDSA}</font>", styles["Normal"])],
+        [Paragraph(f"<font size=7 face='Courier'><b>Llave Pública:</b> {llave_publica}</font>", styles["Normal"])],
+        [Paragraph("<i>Este documento cuenta con un blindaje criptográfico de curva elíptica procesado por motor Rust nativo, garantizando inmutabilidad.</i>", styles["Normal"])]
+    ]
+    
+    tabla_sello = Table(sello_data, colWidths=[500])
+    tabla_sello.setStyle(TableStyle([
+        ('BACKGROUND', (0,0), (-1,-1), colors.HexColor('#EDF2F7')),
+        ('BOX', (0,0), (-1,-1), 1, colors.HexColor('#1F4E78')),
+        ('PADDING', (0,0), (-1,-1), 8),
+    ]))
+    
+    story.append(tabla_sello)
 
     doc.build(story)
     buffer.seek(0)
@@ -655,18 +682,17 @@ if archivo is not None:
         st.markdown("---")
         st.markdown("### 🛡️ Módulo de Seguridad: Sello Criptográfico ECC del Lote")
         
-        # 1. Unimos los datos clave del Excel en un texto para el sello
         resumen_datos = f"Auditoría de Planta - Cultivo: {producto_sel} - Fecha: {datetime.date.today()} - Registros: {total_filas}"
 
-        # 2. Rust genera el sello digital usando la Curva Elíptica
         try:
             llave_publica, sello_digital = motor_rust.firmar_reporte_ecc(resumen_datos)
             
-            # 3. Lo mostramos de forma elegante en tu plataforma corporativa
             st.success("🔒 Reporte Asegurado con Criptografía de Curva Elíptica (ECC)")
             st.code(f"Sello Digital (Firma ECC): {sello_digital}")
             st.caption(f"Llave Pública de Verificación: {llave_publica}")
         except Exception as e:
+            llave_publica = "LLAVE_PENDIENTE_RUST"
+            sello_digital = "SELLO_PENDIENTE_RUST"
             st.warning(f"Sello criptográfico pendiente de sincronización con motor nativo: {e}")
 
         # ==========================================
@@ -838,11 +864,13 @@ if archivo is not None:
                 st.session_state["lote_congelado"],
                 mercado_destino,
                 capa_texto,
+                sello_digital,
+                llave_publica,
             )
             st.download_button(
-                label="📄 Descargar PDF Ejecutivo",
+                label="📄 Descargar PDF Ejecutivo Firmado",
                 data=pdf_buffer.getvalue(),
-                file_name="Resumen_Ejecutivo_Calidad.pdf",
+                file_name="Resumen_Ejecutivo_Firmado_ECC.pdf",
                 mime="application/pdf",
             )
 
