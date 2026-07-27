@@ -50,7 +50,7 @@ from reportlab.platypus import (
 # 1. Configuración de la página web
 st.set_page_config(
     page_title="Sistema Integral de Exportación - Cerro Prieto",
-    page_icon="🥑",
+    page_icon="📊",
     layout="wide",
 )
 
