@@ -1,3 +1,29 @@
+import streamlit as st
+
+# --- CONFIGURACIÓN DE SEGURIDAD GENERAL ---
+USUARIO_CORRECTO = "calidad"
+PASSWORD_CORRECTO = "control2026"
+
+if "autenticado" not in st.session_state:
+    st.session_state["autenticado"] = False
+
+if not st.session_state["autenticado"]:
+    st.title("🔒 Acceso Restringido - Control de Calidad")
+    st.write("Por favor, introduzca sus credenciales para ingresar a la plataforma corporativa.")
+    
+    usuarioInput = st.text_input("Usuario:")
+    passwordInput = st.text_input("Contraseña:", type="password")
+    
+    if st.button("Ingresar"):
+        if usuarioInput == USUARIO_CORRECTO and passwordInput == PASSWORD_CORRECTO:
+            st.session_state["autenticado"] = True
+            st.success("Acceso concedido.")
+            st.rerun()
+        else:
+            st.error("Usuario o contraseña incorrectos. Inténtelo de nuevo.")
+    st.stop()  
+# -------------------------------------------
+
 import datetime
 import io
 import re
