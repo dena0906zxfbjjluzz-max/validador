@@ -3,9 +3,9 @@ import sys
 sys.path.append("motor_rust")
 import motor_rust
 
-# --- CONFIGURACIÓN DE SEGURIDAD GENERAL ---
-USUARIO_CORRECTO = "calidad"
-PASSWORD_CORRECTO = "control2026"
+# Ahora el sistema lee la contraseña en secreto desde la nube
+USUARIO_CORRECTO = st.secrets["credenciales"]["usuario"]
+PASSWORD_CORRECTO = st.secrets["credenciales"]["clave"]
 
 if "autenticado" not in st.session_state:
     st.session_state["autenticado"] = False
