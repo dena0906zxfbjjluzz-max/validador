@@ -3,9 +3,9 @@ import sys
 sys.path.append("motor_rust")
 import motor_rust
 
-# Ahora el sistema lee la contraseña en secreto desde la nube
-USUARIO_CORRECTO = st.secrets["credenciales"]["usuario"]
-PASSWORD_CORRECTO = st.secrets["credenciales"]["clave"]
+# --- CONFIGURACIÓN DE SEGURIDAD GENERAL ---
+USUARIO_CORRECTO = "calidad"
+PASSWORD_CORRECTO = "control2026"
 
 if "autenticado" not in st.session_state:
     st.session_state["autenticado"] = False
@@ -648,6 +648,26 @@ if archivo is not None:
                     st.error(f"🚨 **Alerta de Merma Elevada:** {porcentaje_merma}% de descarte (Límite: {max_merma_permitida}%).")
                 else:
                     st.success(f"✅ **Merma Bajo Control:** {porcentaje_merma}% de descarte.")
+
+        # =========================================================================
+        # 🛡️ MÓDULO DE FIRMA CRIPTOGRÁFICA DE CURVA ELÍPTICA (ECC) - MOTOR RUST
+        # =========================================================================
+        st.markdown("---")
+        st.markdown("### 🛡️ Módulo de Seguridad: Sello Criptográfico ECC del Lote")
+        
+        # 1. Unimos los datos clave del Excel en un texto para el sello
+        resumen_datos = f"Auditoría de Planta - Cultivo: {producto_sel} - Fecha: {datetime.date.today()} - Registros: {total_filas}"
+
+        # 2. Rust genera el sello digital usando la Curva Elíptica
+        try:
+            llave_publica, sello_digital = motor_rust.firmar_reporte_ecc(resumen_datos)
+            
+            # 3. Lo mostramos de forma elegante en tu plataforma corporativa
+            st.success("🔒 Reporte Asegurado con Criptografía de Curva Elíptica (ECC)")
+            st.code(f"Sello Digital (Firma ECC): {sello_digital}")
+            st.caption(f"Llave Pública de Verificación: {llave_publica}")
+        except Exception as e:
+            st.warning(f"Sello criptográfico pendiente de sincronización con motor nativo: {e}")
 
         # ==========================================
         # 4️⃣ TRAZABILIDAD, OBSERVACIONES Y CIERRE CON PAGINACIÓN ANTICONGELAMIENTO
