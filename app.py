@@ -80,7 +80,7 @@ st.markdown(
 
 st.title("🏭 Plataforma Corporativa de Control de Calidad, Trazabilidad, Contenedores y Planta (Perú)")
 st.write(
-    "Sistema integral optimizado: GS1, Balanzas, LMR SENASA, Trazabilidad Inversa, Control de Frío y Gestión de Precintos de Contenedor."
+    "Sistema integral optimizado con motor Rust nativo: GS1, Balanzas, LMR SENASA, Trazabilidad Inversa, Control de Frío y Gestión de Precintos de Contenedor."
 )
 
 # --- INICIALIZAR BASE DE DATOS LOCAL SQLite (Persistencia y Mantenimiento) ---
@@ -127,7 +127,6 @@ def inicializar_base_datos():
             estado TEXT
         )
     """)
-    # Purgar registros antiguos de la bitácora (más de 7 días) para evitar saturación de BD
     cursor.execute("DELETE FROM bitacora_cambios WHERE datetime(fecha_hora) < datetime('now', '-7 days')")
     conn.commit()
     conn.close()
@@ -178,7 +177,6 @@ def cargar_contenedores_db():
     conn.close()
     return df_cont.to_dict("records")
 
-# --- CARGA OPTIMIZADA CON CACHÉ PARA EVITAR CONGELAMIENTOS ---
 @st.cache_data
 def cargar_datos_archivo(uploaded_file):
     if uploaded_file.name.endswith(".csv"):
@@ -187,14 +185,12 @@ def cargar_datos_archivo(uploaded_file):
         df = pd.read_excel(uploaded_file, dtype=str)
     return df.map(lambda x: str(x).strip() if pd.notna(x) else "")
 
-# --- ESTADOS DE SESIÓN ---
 if "lote_congelado" not in st.session_state:
     st.session_state["lote_congelado"] = False
 
 if "mostrar_vacios" not in st.session_state:
     st.session_state["mostrar_vacios"] = False
 
-# --- CONFIGURACIÓN DE PARÁMETROS EN BARRA LATERAL ---
 st.sidebar.header("⚙️ Parámetros de Planta & Destino")
 
 auditor_nombre = st.sidebar.text_input("Inspector Asignado:", value="Control de Calidad")
@@ -370,7 +366,6 @@ if archivo is not None:
     try:
         df_original = cargar_datos_archivo(archivo)
 
-        # Validación flexible de columnas clave
         columnas_requeridas = ["LOTE", "PESO", "CALIBRE"]
         columnas_actuales_mayus = [c.upper() for c in df_original.columns]
         columnas_faltantes = [req for req in columnas_requeridas if not any(req in col for col in columnas_actuales_mayus)]
@@ -389,11 +384,18 @@ if archivo is not None:
         total_errores = int(vacios_por_columna.sum())
 
         celdas_totales = total_filas * total_columnas
-        porcentaje_limpio = (
-            round(((celdas_totales - total_errores) / celdas_totales) * 100, 1)
-            if celdas_totales > 0
-            else 100
-        )
+        
+        # --- INTEGRACIÓN DEL MOTOR RUST EN TIEMPO REAL ---
+        try:
+            eficiencia_rust, estado_rust = motor_rust.validar_datos_planta(float(total_filas), float(total_errores))
+            porcentaje_limpio = round(eficiencia_rust, 1)
+        except Exception:
+            porcentaje_limpio = (
+                round(((celdas_totales - total_errores) / celdas_totales) * 100, 1)
+                if celdas_totales > 0
+                else 100
+            )
+            estado_rust = "Motor Python Respaldo"
 
         hora_actual = datetime.datetime.now().strftime("%H:%M:%S")
         guardar_historial_db(hora_actual, archivo.name, total_filas, f"{porcentaje_limpio}%")
@@ -406,7 +408,7 @@ if archivo is not None:
             delta=f"-{total_errores}" if total_errores > 0 else "0",
             delta_color="inverse",
         )
-        st.sidebar.metric(label="Confiabilidad General", value=f"{porcentaje_limpio}%")
+        st.sidebar.metric(label="Confiabilidad (Motor Rust)", value=f"{porcentaje_limpio}%", delta=estado_rust)
 
         historial_db_data = cargar_historial_db()
         if historial_db_data:
@@ -420,6 +422,7 @@ if archivo is not None:
         # =========================================================================
         # 🔌 MÓDULO 1: SIMULACIÓN DE BALANZA INDUSTRIAL Y LECTOR DE CÓDIGO DE BARRAS / SSCC
         # =========================================================================
+        st.markdown("---")
         st.markdown("### 🔌 Módulo 1: Conexión de Balanza y Lectura Rápida de Pallets (SSCC)")
         col_b1, col_b2 = st.columns(2)
         with col_b1:
@@ -677,7 +680,6 @@ if archivo is not None:
             indices_validos = df_original[mask_prod].index
             df_mostrar = df_mostrar.loc[df_mostrar.index.isin(indices_validos)]
 
-        # --- SISTEMA DE PAGINACIÓN PARA EVITAR SATURACIÓN DE MEMORIA WEB ---
         TAMANO_PAGINA = 100
         total_registros_visibles = len(df_mostrar)
         
@@ -698,7 +700,6 @@ if archivo is not None:
             st.info("💡 **Nota de Planta:** Puedes escribir directamente en la columna `Observaciones_Rechazo` de la tabla si una caja presenta golpes, calibre fuera de rango u otra incidencia.")
             df_editado_pag = st.data_editor(df_paginado, use_container_width=True, key="editor_datos_pag")
             
-            # Sincronizar cambios de la página actual con el dataframe general
             df_editado = df_mostrar.copy()
             if total_registros_visibles > TAMANO_PAGINA:
                 df_editado.iloc[inicio:fin] = df_editado_pag
@@ -759,7 +760,7 @@ if archivo is not None:
                         "Mercado Destino",
                         "Total Registros Exportados",
                         "Errores Iniciales Detectados",
-                        "Confiabilidad del Proceso",
+                        "Confiabilidad del Proceso (Motor Rust)",
                         "Estado del Lote",
                         "Inspector Responsable",
                     ],
