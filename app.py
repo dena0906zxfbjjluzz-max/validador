@@ -1,4 +1,6 @@
 import streamlit as st
+import sys
+sys.path.append("motor_rust")
 import motor_rust
 
 # --- CONFIGURACIÓN DE SEGURIDAD GENERAL ---
