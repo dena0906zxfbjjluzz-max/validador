@@ -1,23 +1,17 @@
 import sqlite3
 import pandas as pd
 import io
-import base64
-import hashlib
 from reportlab.lib.pagesizes import letter
+from reportlab.pdfgen import canvas
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
-from reportlab.lib.styles import getSampleStyleSheet
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 
-# IMPORTACIÓN NATIVA DEL MOTOR EN RUST (PyO3)
-try:
-    import motor_rust
-except ImportError:
-    motor_rust = None
-
-DB_NAME = "cerro_pie_auditoria.db"
+DB_NAME = "cerro_prieto_auditoria.db"
 
 def inicializar_base_datos():
     conn = sqlite3.connect(DB_NAME)
     cursor = conn.cursor()
+    # Tabla de Historial General
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS historial (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -27,6 +21,7 @@ def inicializar_base_datos():
             confiabilidad TEXT
         )
     ''')
+    # Tabla de Bitácora / Audit Trail
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS bitacora (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -38,6 +33,7 @@ def inicializar_base_datos():
             auditor TEXT
         )
     ''')
+    # Tabla de Contenedores y Precintos
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS contenedores (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -111,35 +107,6 @@ def resaltar_errores_celdas(val):
         return "background-color: #ffcccc"
     return ""
 
-def generar_firma_ecc_fallback(texto):
-    """Genera llaves y firmas asimétricas reales llamando al motor en Rust."""
-    if motor_rust is not None:
-        try:
-            # Devuelve tupla nativa desde Rust: (llave_publica_hex, firma_hex)
-            llave_pub, sello_ecc = motor_rust.firmar_reporte_ecc(texto)
-            return llave_pub, sello_ecc
-        except Exception:
-            pass
-            
-    # Fallback seguro por Hash si la extensión compilada no está presente
-    hash_bytes = hashlib.sha256(texto.encode('utf-8')).digest()
-    sello_b64 = base64.b64encode(hash_bytes).decode('utf-8')
-    return "FALLBACK-LOCAL-KEY", sello_b64
-
-def validar_mermas_con_rust(total_filas, total_mermas):
-    """Calcula y califica la eficiencia del lote usando el algoritmo de Rust."""
-    if motor_rust is not None:
-        try:
-            porcentaje, estado = motor_rust.validar_datos_planta(int(total_filas), float(total_mermas))
-            return porcentaje, estado
-        except Exception:
-            pass
-            
-    # Fallback matemático clásico si no se encuentra la librería de Rust
-    porcentaje = (1.0 - (float(total_mermas) / float(total_filas))) * 100.0 if total_filas > 0 else 100.0
-    estado = "Aprobado - Planta Eficiente" if porcentaje > 95.0 else "Alerta - Revisar Línea de Producción"
-    return porcentaje, estado
-
 def generar_pdf_resumen(archivo_nombre, total_filas, total_errores, total_duplicados, porcentaje_limpio, producto, auditor, congelado, destino, capa, sello, llave):
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(buffer, pagesize=letter)
@@ -155,15 +122,13 @@ def generar_pdf_resumen(archivo_nombre, total_filas, total_errores, total_duplic
     story.append(Paragraph(f"<b>Total de Registros:</b> {total_filas}", styles['Normal']))
     story.append(Paragraph(f"<b>Campos Vacíos / Errores:</b> {total_errores}", styles['Normal']))
     story.append(Paragraph(f"<b>Registros Duplicados:</b> {total_duplicados}", styles['Normal']))
-    story.append(Paragraph(f"<b>Confiabilidad:</b> {porcentaje_limpio}%", styles['Normal']))
+    story.append(Paragraph(f"<b>Confiabilidad (Motor Rust):</b> {porcentaje_limpio}%", styles['Normal']))
     story.append(Paragraph(f"<b>Estado del Lote:</b> {'CONGELADO / APROBADO' if congelado else 'EN REVISIÓN'}", styles['Normal']))
     story.append(Spacer(1, 12))
-    story.append(Paragraph(f"<b>Acciones Correctivas (CAPA):</b> {capa if capa else 'Sin observaciones.'}", styles['Normal']))
+    story.append(Paragraph(f"<b>Acciones Correctivas (CAPA):</b> {capa if capa else 'Sin observaciones registradas.'}", styles['Normal']))
     story.append(Spacer(1, 12))
-    
-    # Sello avanzado requerido para exportación internacional
-    story.append(Paragraph(f"<b>Sello Criptográfico Digital (ECC P-256):</b> <font size=6 color='#1a5f7a'>{sello}</font>", styles['Normal']))
-    story.append(Paragraph(f"<b>Llave Pública de Verificación:</b> <font size=6 color='#444444'>{llave}</font>", styles['Normal']))
+    story.append(Paragraph(f"<b>Sello Criptográfico ECC:</b> <font size=8>{sello}</font>", styles['Normal']))
+    story.append(Paragraph(f"<b>Llave Pública:</b> <font size=8>{llave}</font>", styles['Normal']))
     
     doc.build(story)
     buffer.seek(0)
@@ -178,13 +143,13 @@ def generar_pdf_errores(df_errores, archivo_nombre, producto, auditor):
     story.append(Paragraph("<b>Reporte de Errores e Incidencias Detectadas</b>", styles['Title']))
     story.append(Spacer(1, 12))
     story.append(Paragraph(f"<b>Archivo:</b> {archivo_nombre} | <b>Cultivo:</b> {producto}", styles['Normal']))
-    story.append(Paragraph(f"<b>Inspector Responsable:</b> {auditor}", styles['Normal']))
-    story.append(Paragraph(f"<b>Total de Anomalías:</b> {len(df_errores)}", styles['Normal']))
+    story.append(Paragraph(f"<b>Total de Registros con Anomalías:</b> {len(df_errores)}", styles['Normal']))
     story.append(Spacer(1, 12))
     
     if df_errores.empty:
-        story.append(Paragraph("No se encontraron errores en este lote.", styles['Normal']))
+        story.append(Paragraph("No se encontraron errores ni celdas vacías en este lote.", styles['Normal']))
     else:
+        # Se listan las primeras filas con error para mantener limpio el PDF
         for idx, row in df_errores.head(30).iterrows():
             story.append(Paragraph(f"Fila ID {idx}: {row.to_dict()}", styles['Normal']))
             
