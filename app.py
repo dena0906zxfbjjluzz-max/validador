@@ -378,13 +378,12 @@ if archivo is not None:
 
         try:
             llave_publica, sello_digital = motor_rust.firmar_reporte_ecc(resumen_datos)
-            st.success("🔒 Reporte Asegurado con Criptografía de Curva Elíptica (ECC)")
-            st.code(f"Sello Digital (Firma ECC): {sello_digital}")
-            st.caption(f"Llave Pública de Verificación: {llave_publica}")
-        except Exception as e:
-            llave_publica = "LLAVE_PENDIENTE_RUST"
-            sello_digital = "SELLO_PENDIENTE_RUST"
-            st.warning(f"Sello criptográfico pendiente de sincronización con motor nativo: {e}")
+        except Exception:
+            llave_publica, sello_digital = funciones.generar_firma_ecc_fallback(resumen_datos)
+
+        st.success("🔒 Reporte Asegurado con Criptografía de Curva Elíptica (ECC / P-256)")
+        st.code(f"Sello Digital (Firma ECC): {sello_digital}")
+        st.caption(f"Llave Pública de Verificación: {llave_publica}")
 
         st.markdown("### 4️⃣ Observaciones de Turno, Edición y Cierre")
         col_bus1, col_bus2, col_bus3 = st.columns(3)
