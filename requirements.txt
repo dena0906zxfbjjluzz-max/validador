@@ -3,3 +3,4 @@ openpyxl
 reportlab
 xlsxwriter
 cryptography>=41.0.0
+cryptography
