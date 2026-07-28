@@ -5,8 +5,7 @@
 5  [lib]
 6  name = "motor_rust"
 7  crate-type = ["cdylib"]
-8  [dependencies]
-9  pyo3 = { version = "0.22", features = ["extension-module"] }
-10 
-11 p256 = { version = "0.13", features = ["ecdsa"] }
-12 hex = "0.4"
+[dependencies]
+p256 = { version = "0.13", features = ["ecdsa", "pkcs8"] }
+rand_core = "0.6"
+hex = "0.4"
