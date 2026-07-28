@@ -1,10 +1,12 @@
-1  [package]
-2  name = "motor_rust"
-3  version = "0.1.0"
-4  edition = "2021"
-5  [lib]
-6  name = "motor_rust"
-7  crate-type = ["cdylib"]
+[package]
+name = "motor_rust"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "motor_rust"
+crate-type = ["cdylib"]
+
 [dependencies]
 pyo3 = { version = "0.22", features = ["extension-module"] }
 p256 = { version = "0.13", features = ["ecdsa", "pkcs8"] }
