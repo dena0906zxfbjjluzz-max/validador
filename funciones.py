@@ -1,7 +1,6 @@
 import io
 import datetime
 import sqlite3
-import hashlib  # Agregado para generar el cifrado dinámico de respaldo
 import pandas as pd
 from openpyxl.styles import PatternFill
 from openpyxl.utils import get_column_letter
@@ -16,12 +15,6 @@ from reportlab.platypus import (
     Table,
     TableStyle,
 )
-
-# INTENTO DE CARGA DEL MOTOR NATIVO EN RUST
-try:
-    import motor_rust
-except ImportError:
-    motor_rust = None
 
 def inicializar_base_datos():
     conn = sqlite3.connect("calidad_cerroprieto_pro.db")
@@ -127,25 +120,6 @@ def resaltar_errores_celdas(val):
         return "background-color: #ffcccc; color: #990000; font-weight: bold;"
     return ""
 
-# FUNCIÓN AGREGADA: ENLACE COMPLETO ENTRE RUST NATIVO Y ESCUDO PYTHON
-def generar_firma_ecc_fallback(texto_reporte):
-    """Retorna llaves asimétricas reales de Rust o calcula firmas dinámicas SHA-256 en internet."""
-    if motor_rust is not None:
-        try:
-            # Si el entorno (como tu laptop con WSL) tiene Rust compilado, lo ejecuta
-            llave_pub, sello_ecc = motor_rust.firmar_reporte_ecc(texto_reporte)
-            return llave_pub, sello_ecc
-        except Exception:
-            pass
-            
-    # RESPALDO PARA LA NUBE: Cifra de forma única basándose en la información del lote
-    hash_objeto = hashlib.sha256(texto_reporte.encode('utf-8'))
-    sello_dinamico = hash_objeto.hexdigest().upper()
-    
-    # Genera una clave pública matemática aleatoria limpia para la vista comercial
-    llave_simulada = hashlib.sha1(texto_reporte.encode('utf-8')).hexdigest()[:40].upper()
-    return f"ECDSA-PUB-{llave_simulada}", f"SIG-P256-{sello_dinamico[:46]}"
-
 def generar_pdf_resumen(
     archivo_nombre,
     total_filas,
@@ -200,7 +174,7 @@ def generar_pdf_resumen(
         ["Total Registros Auditados", str(total_filas)],
         ["Celdas Vacías / Errores Base", str(total_errores)],
         ["Registros Duplicados", str(duplicados)],
-        ["Índice de Confiabilidad Inicial", f"{confiabilidad}"],
+        ["Índice de Confiabilidad Inicial", f"{confiabilidad}%"],
         ["Responsable de Auditoría", auditor],
     ]
 
@@ -243,34 +217,57 @@ def generar_pdf_resumen(
     buffer.seek(0)
     return buffer
 
-def generar_pdf_errores(df_errores, archivo_nombre, producto):
+def generar_pdf_errores(df_errores, archivo_nombre, producto, auditor):
     buffer = io.BytesIO()
-    doc = SimpleDocTemplate(buffer, pagesize=letter, rightMargin=30, leftMargin=30, topMargin=30, bottomMargin=30)
+    doc = SimpleDocTemplate(
+        buffer,
+        pagesize=letter,
+        rightMargin=20,
+        leftMargin=20,
+        topMargin=20,
+        bottomMargin=20,
+    )
     story = []
     styles = getSampleStyleSheet()
-    story.append(Paragraph("<b>REPORTE DE ANOMALÍAS Y DETALLES ENCONTRADOS</b>", styles['Heading1']))
+
+    title = Paragraph("<b>REPORTE DE REGISTROS CON ERRORES O FALTANTES EN PLANTA</b>", styles["Title"])
+    story.append(title)
+    story.append(Spacer(1, 5))
+
+    fecha_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    sub = Paragraph(
+        f"<b>Archivo Base:</b> {archivo_nombre} | <b>Cultivo:</b> {producto}<br/><b>Inspector:</b> {auditor} | <b>Fecha de Emisión:</b> {fecha_str}",
+        styles["Normal"],
+    )
+    story.append(sub)
     story.append(Spacer(1, 10))
+
     if df_errores.empty:
-        story.append(Paragraph("No se encontraron registros vacíos en la base de datos.", styles['Normal']))
+        story.append(Paragraph("<b>¡Excelente! No se encontraron registros con errores o celdas vacías.</b>", styles["Normal"]))
     else:
-        columnas = list(df_errores.columns[:5])
-        datos_anomalias = [columnas] + df_errores[columnas].head(30).values.tolist()
+        cols_a_mostrar = list(df_errores.columns[:7])
+        tabla_datos = [[Paragraph(f"<b>{c}</b>", styles["Normal"]) for c in cols_a_mostrar]]
         
-        t_err = Table(datos_anomalias, colWidths=[100] * len(columnas))
-        t_err.setStyle(
+        for _, row in df_errores.iterrows():
+            fila_cells = [Paragraph(str(row[c]), styles["Normal"]) for c in cols_a_mostrar]
+            tabla_datos.append(fila_cells)
+
+        ancho_col = 572 / len(cols_a_mostrar)
+        t = Table(tabla_datos, colWidths=[ancho_col] * len(cols_a_mostrar))
+        t.setStyle(
             TableStyle([
                 ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#C00000")),
                 ("TEXTCOLOR", (0, 0), (-1, 0), colors.whitesmoke),
                 ("ALIGN", (0, 0), (-1, -1), "LEFT"),
-                ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-                ("FONTSIZE", (0, 0), (-1, -1), 8),
+                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
                 ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+                ("TOPPADDING", (0, 0), (-1, -1), 4),
                 ("BACKGROUND", (0, 1), (-1, -1), colors.HexColor("#F9F9F9")),
                 ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#D9D9D9")),
             ])
         )
-        story.append(t_err)
-        
+        story.append(t)
+
     doc.build(story)
     buffer.seek(0)
     return buffer
