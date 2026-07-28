@@ -2,28 +2,14 @@ import streamlit as st
 import sys
 import datetime
 import io
-import re
-import sqlite3
 import pandas as pd
 
-# Librerías para autoajuste de Excel y formato condicional (colores)
 from openpyxl.styles import PatternFill
 from openpyxl.utils import get_column_letter
 
-# Librerías para generación de PDF profesional
-from reportlab.lib import colors
-from reportlab.lib.pagesizes import letter
-from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-from reportlab.platypus import (
-    Paragraph,
-    SimpleDocTemplate,
-    Spacer,
-    Table,
-    TableStyle,
-)
-
 sys.path.append("motor_rust")
 import motor_rust
+import funciones
 
 # --- CONFIGURACIÓN DE SEGURIDAD GENERAL ---
 USUARIO_CORRECTO = "calidad"
@@ -49,14 +35,12 @@ if not st.session_state["autenticado"]:
     st.stop()  
 # -------------------------------------------
 
-# 1. Configuración de la página web
 st.set_page_config(
     page_title="Sistema Integral de Exportación - Cerro Prieto",
     page_icon="📊",
     layout="wide",
 )
 
-# Estilo visual corporativo
 st.markdown(
     """
     <style>
@@ -82,107 +66,7 @@ st.write(
     "Sistema integral optimizado con motor Rust nativo: GS1, Balanzas, LMR SENASA, Trazabilidad Inversa, Control de Frío y Gestión de Precintos de Contenedor."
 )
 
-# --- INICIALIZAR BASE DE DATOS LOCAL SQLite (Persistencia y Mantenimiento) ---
-def inicializar_base_datos():
-    conn = sqlite3.connect("calidad_cerroprieto_pro.db")
-    cursor = conn.cursor()
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS historial_sesion (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            hora TEXT,
-            archivo TEXT,
-            registros INTEGER,
-            confiabilidad TEXT
-        )
-    """)
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS bitacora_cambios (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            fecha_hora TEXT,
-            fila_indice INTEGER,
-            columna TEXT,
-            valor_anterior TEXT,
-            nuevo_valor TEXT,
-            inspector TEXT
-        )
-    """)
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS control_frio (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            camara TEXT,
-            temperatura REAL,
-            hora_registro TEXT,
-            estado TEXT
-        )
-    """)
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS contenedores_despacho (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            booking TEXT,
-            contenedor TEXT,
-            precinto_linea TEXT,
-            precinto_senasa TEXT,
-            destino TEXT,
-            estado TEXT
-        )
-    """)
-    cursor.execute("DELETE FROM bitacora_cambios WHERE datetime(fecha_hora) < datetime('now', '-7 days')")
-    conn.commit()
-    conn.close()
-
-inicializar_base_datos()
-
-def guardar_historial_db(hora, archivo, registros, confiabilidad):
-    conn = sqlite3.connect("calidad_cerroprieto_pro.db")
-    cursor = conn.cursor()
-    cursor.execute("SELECT id FROM historial_sesion WHERE archivo = ?", (archivo,))
-    if not cursor.fetchone():
-        cursor.execute("INSERT INTO historial_sesion (hora, archivo, registros, confiabilidad) VALUES (?, ?, ?, ?)",
-                       (hora, archivo, registros, confiabilidad))
-        conn.commit()
-    conn.close()
-
-def cargar_historial_db():
-    conn = sqlite3.connect("calidad_cerroprieto_pro.db")
-    df_db = pd.read_sql_query("SELECT hora AS Hora, archivo AS Archivo, registros AS Registros, confiabilidad AS Confiabilidad FROM historial_sesion", conn)
-    conn.close()
-    return df_db.to_dict("records")
-
-def guardar_cambio_db(fecha_hora, fila_indice, columna, valor_anterior, nuevo_valor, inspector):
-    conn = sqlite3.connect("calidad_cerroprieto_pro.db")
-    cursor = conn.cursor()
-    cursor.execute("INSERT INTO bitacora_cambios (fecha_hora, fila_indice, columna, valor_anterior, nuevo_valor, inspector) VALUES (?, ?, ?, ?, ?, ?)",
-                   (fecha_hora, fila_indice, columna, valor_anterior, nuevo_valor, inspector))
-    conn.commit()
-    conn.close()
-
-def cargar_bitacora_db():
-    conn = sqlite3.connect("calidad_cerroprieto_pro.db")
-    df_bit = pd.read_sql_query("SELECT fecha_hora AS 'Fecha/Hora', fila_indice AS 'Fila Índice', columna AS 'Columna Modificada', valor_anterior AS 'Valor Anterior', nuevo_valor AS 'Nuevo Valor', inspector AS 'Inspector' FROM bitacora_cambios", conn)
-    conn.close()
-    return df_bit.to_dict("records")
-
-def guardar_contenedor_db(booking, contenedor, p_linea, p_senasa, destino, estado):
-    conn = sqlite3.connect("calidad_cerroprieto_pro.db")
-    cursor = conn.cursor()
-    cursor.execute("INSERT INTO contenedores_despacho (booking, contenedor, precinto_linea, precinto_senasa, destino, estado) VALUES (?, ?, ?, ?, ?, ?)",
-                   (booking, contenedor, p_linea, p_senasa, destino, estado))
-    conn.commit()
-    conn.close()
-
-def cargar_contenedores_db():
-    conn = sqlite3.connect("calidad_cerroprieto_pro.db")
-    df_cont = pd.read_sql_query("SELECT booking AS 'Booking', contenedor AS 'Contenedor', precinto_linea AS 'Precinto Línea', precinto_senasa AS 'Precinto SENASA', destino AS 'Destino', estado AS 'Estado' FROM contenedores_despacho", conn)
-    conn.close()
-    return df_cont.to_dict("records")
-
-@st.cache_data
-def cargar_datos_archivo(uploaded_file):
-    if uploaded_file.name.endswith(".csv"):
-        df = pd.read_csv(uploaded_file, dtype=str)
-    else:
-        df = pd.read_excel(uploaded_file, dtype=str)
-    return df.map(lambda x: str(x).strip() if pd.notna(x) else "")
+funciones.inicializar_base_datos()
 
 if "lote_congelado" not in st.session_state:
     st.session_state["lote_congelado"] = False
@@ -228,170 +112,9 @@ archivo = st.file_uploader(
     "Cargar Base de Datos de Recepción / Empaque (Excel o CSV)", type=["xlsx", "csv"]
 )
 
-def resaltar_errores_celdas(val):
-    val_str = str(val).strip()
-    if val_str == "" or val_str == "-":
-        return "background-color: #ffcccc; color: #990000; font-weight: bold;"
-    return ""
-
-def generar_pdf_resumen(
-    archivo_nombre,
-    total_filas,
-    total_errores,
-    duplicados,
-    confiabilidad,
-    producto,
-    auditor,
-    congelado_estado,
-    mercado,
-    capa_texto,
-    firma_ECDSA,
-    llave_publica,
-):
-    buffer = io.BytesIO()
-    doc = SimpleDocTemplate(
-        buffer,
-        pagesize=letter,
-        rightMargin=30,
-        leftMargin=30,
-        topMargin=30,
-        bottomMargin=30,
-    )
-    story = []
-    styles = getSampleStyleSheet()
-
-    titulo_estilo = ParagraphStyle(
-        'TituloReporte',
-        parent=styles['Heading1'],
-        fontSize=16,
-        textColor=colors.HexColor('#1F4E78'),
-        spaceAfter=10
-    )
-
-    title = Paragraph("<b>REPORTE EJECUTIVO DE AUDITORÍA Y TRAZABILIDAD AGROINDUSTRIAL</b>", titulo_estilo)
-    story.append(title)
-    story.append(Spacer(1, 5))
-
-    fecha_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    estado_txt = "APROBADO Y CONGELADO" if congelado_estado else "EN EDICIÓN / REVISIÓN"
-    
-    sub = Paragraph(
-        f"<b>Planta:</b> Cerro Prieto | <b>Producto:</b> {producto} | <b>Destino:</b> {mercado}<br/><b>Estado:</b> {estado_txt} | <b>Fecha:</b> {fecha_str}",
-        styles["Normal"],
-    )
-    story.append(sub)
-    story.append(Spacer(1, 10))
-
-    datos_tabla = [
-        ["Indicador de Control", "Valor Registrado"],
-        ["Nombre del Archivo Base", archivo_nombre],
-        ["Total Registros Auditados", str(total_filas)],
-        ["Celdas Vacías / Errores Base", str(total_errores)],
-        ["Registros Duplicados", str(duplicados)],
-        ["Índice de Confiabilidad Inicial", f"{confiabilidad}%"],
-        ["Responsable de Auditoría", auditor],
-    ]
-
-    t = Table(datos_tabla, colWidths=[220, 280])
-    t.setStyle(
-        TableStyle([
-            ("BACKGROUND", (0, 0), (1, 0), colors.HexColor("#1F4E78")),
-            ("TEXTCOLOR", (0, 0), (1, 0), colors.whitesmoke),
-            ("ALIGN", (0, 0), (-1, -1), "LEFT"),
-            ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-            ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
-            ("BACKGROUND", (0, 1), (-1, -1), colors.HexColor("#F2F2F2")),
-            ("GRID", (0, 0), (-1, -1), 1, colors.HexColor("#D9D9D9")),
-        ])
-    )
-    story.append(t)
-    story.append(Spacer(1, 10))
-
-    if capa_texto.strip() != "":
-        capa_p = Paragraph(f"<b>Acción Correctiva (CAPA / Justificación):</b><br/>{capa_texto}", styles["Normal"])
-        story.append(capa_p)
-        story.append(Spacer(1, 10))
-
-    # Bloque de Sello Criptográfico ECC (P-256) en el PDF
-    sello_data = [
-        [Paragraph("<b>Sello Criptográfico de Curva Elíptica (ECC / P-256):</b>", styles["Normal"])],
-        [Paragraph(f"<font size=7 face='Courier'><b>Firma:</b> {firma_ECDSA}</font>", styles["Normal"])],
-        [Paragraph(f"<font size=7 face='Courier'><b>Llave Pública:</b> {llave_publica}</font>", styles["Normal"])],
-        [Paragraph("<i>Este documento cuenta con un blindaje criptográfico de curva elíptica procesado por motor Rust nativo, garantizando inmutabilidad.</i>", styles["Normal"])]
-    ]
-    
-    tabla_sello = Table(sello_data, colWidths=[500])
-    tabla_sello.setStyle(TableStyle([
-        ('BACKGROUND', (0,0), (-1,-1), colors.HexColor('#EDF2F7')),
-        ('BOX', (0,0), (-1,-1), 1, colors.HexColor('#1F4E78')),
-        ('PADDING', (0,0), (-1,-1), 8),
-    ]))
-    
-    story.append(tabla_sello)
-
-    doc.build(story)
-    buffer.seek(0)
-    return buffer
-
-def generar_pdf_errores(df_errores, archivo_nombre, producto, auditor):
-    buffer = io.BytesIO()
-    doc = SimpleDocTemplate(
-        buffer,
-        pagesize=letter,
-        rightMargin=20,
-        leftMargin=20,
-        topMargin=20,
-        bottomMargin=20,
-    )
-    story = []
-    styles = getSampleStyleSheet()
-
-    title = Paragraph("<b>REPORTE DE REGISTROS CON ERRORES O FALTANTES EN PLANTA</b>", styles["Title"])
-    story.append(title)
-    story.append(Spacer(1, 5))
-
-    fecha_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    sub = Paragraph(
-        f"<b>Archivo Base:</b> {archivo_nombre} | <b>Cultivo:</b> {producto}<br/><b>Inspector:</b> {auditor} | <b>Fecha de Emisión:</b> {fecha_str}",
-        styles["Normal"],
-    )
-    story.append(sub)
-    story.append(Spacer(1, 10))
-
-    if df_errores.empty:
-        story.append(Paragraph("<b>¡Excelente! No se encontraron registros con errores o celdas vacías.</b>", styles["Normal"]))
-    else:
-        cols_a_mostrar = list(df_errores.columns[:7])
-        tabla_datos = [[Paragraph(f"<b>{c}</b>", styles["Normal"]) for c in cols_a_mostrar]]
-        
-        for _, row in df_errores.iterrows():
-            fila_cells = [Paragraph(str(row[c]), styles["Normal"]) for c in cols_a_mostrar]
-            tabla_datos.append(fila_cells)
-
-        ancho_col = 572 / len(cols_a_mostrar)
-        t = Table(tabla_datos, colWidths=[ancho_col] * len(cols_a_mostrar))
-        t.setStyle(
-            TableStyle([
-                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#C00000")),
-                ("TEXTCOLOR", (0, 0), (-1, 0), colors.whitesmoke),
-                ("ALIGN", (0, 0), (-1, -1), "LEFT"),
-                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-                ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
-                ("TOPPADDING", (0, 0), (-1, -1), 4),
-                ("BACKGROUND", (0, 1), (-1, -1), colors.HexColor("#F9F9F9")),
-                ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#D9D9D9")),
-            ])
-        )
-        story.append(t)
-
-    doc.build(story)
-    buffer.seek(0)
-    return buffer
-
-
 if archivo is not None:
     try:
-        df_original = cargar_datos_archivo(archivo)
+        df_original = funciones.cargar_datos_archivo(archivo)
 
         columnas_requeridas = ["LOTE", "PESO", "CALIBRE"]
         columnas_actuales_mayus = [c.upper() for c in df_original.columns]
@@ -412,7 +135,6 @@ if archivo is not None:
 
         celdas_totales = total_filas * total_columnas
         
-        # --- INTEGRACIÓN DEL MOTOR RUST EN TIEMPO REAL ---
         try:
             eficiencia_rust, estado_rust = motor_rust.validar_datos_planta(float(total_filas), float(total_errores))
             porcentaje_limpio = round(eficiencia_rust, 1)
@@ -425,7 +147,7 @@ if archivo is not None:
             estado_rust = "Motor Python Respaldo"
 
         hora_actual = datetime.datetime.now().strftime("%H:%M:%S")
-        guardar_historial_db(hora_actual, archivo.name, total_filas, f"{porcentaje_limpio}%")
+        funciones.guardar_historial_db(hora_actual, archivo.name, total_filas, f"{porcentaje_limpio}%")
 
         st.sidebar.markdown("---")
         st.sidebar.metric(label="Total Registros", value=total_filas)
@@ -437,7 +159,7 @@ if archivo is not None:
         )
         st.sidebar.metric(label="Confiabilidad (Motor Rust)", value=f"{porcentaje_limpio}%", delta=estado_rust)
 
-        historial_db_data = cargar_historial_db()
+        historial_db_data = funciones.cargar_historial_db()
         if historial_db_data:
             st.sidebar.subheader("🕒 Historial Persistente (SQLite)")
             st.sidebar.dataframe(
@@ -446,9 +168,7 @@ if archivo is not None:
                 hide_index=True,
             )
 
-        # =========================================================================
-        # 🔌 MÓDULO 1: SIMULACIÓN DE BALANZA INDUSTRIAL Y LECTOR DE CÓDIGO DE BARRAS / SSCC
-        # =========================================================================
+        # MÓDULO 1
         st.markdown("---")
         st.markdown("### 🔌 Módulo 1: Conexión de Balanza y Lectura Rápida de Pallets (SSCC)")
         col_b1, col_b2 = st.columns(2)
@@ -463,9 +183,7 @@ if archivo is not None:
             if sscc_input:
                 st.success(f"Pallet/Caja identificada mediante código de barras: **{sscc_input}**")
 
-        # =========================================================================
-        # 🧪 MÓDULO 2: CONTROL DE LMR (PESTICIDAS) Y CUMPLIMIENTO SENASA
-        # =========================================================================
+        # MÓDULO 2
         st.markdown("---")
         st.markdown("### 🧪 Módulo 2: Control de Límites Máximos de Residuos (LMR) y Certificación SENASA")
         col_mle1, col_mle2, col_mle3 = st.columns(3)
@@ -482,9 +200,7 @@ if archivo is not None:
             else:
                 st.error("🔴 **SENASA / Destino:** BLOQUEADO DE PLANTA (No exportable)")
 
-        # =========================================================================
-        # 🗺️ MÓDULO 3: TRAZABILIDAD INVERSA (DE CAJA / PALLET HASTA EL FUNDO DE ORIGEN)
-        # =========================================================================
+        # MÓDULO 3
         st.markdown("---")
         st.markdown("### 🗺️ Módulo 3: Trazabilidad Inversa (De Caja o Pallet al Fundo de Origen)")
         col_inv1, col_inv2 = st.columns([2, 3])
@@ -501,9 +217,7 @@ if archivo is not None:
                 * **Inspector Responsable:** {auditor_nombre}
                 """)
 
-        # =========================================================================
-        # 🌡️ MÓDULO 4: CONTROL DE TEMPERATURAS DE CADENA DE FRÍO (PRE-FRÍO Y TÚNELES)
-        # =========================================================================
+        # MÓDULO 4
         st.markdown("---")
         st.markdown("### 🌡️ Módulo 4: Control Térmico de Cadena de Frío (Pre-frío y Contenedores)")
         col_f1, col_f2, col_f3 = st.columns(3)
@@ -518,9 +232,7 @@ if archivo is not None:
             else:
                 st.error(f"🚨 **Ruptura de Cadena de Frío:** ¡Temperatura alta ({temp_actual_camara}°C)! Lote bloqueado automáticamente.")
 
-        # =========================================================================
-        # 🚢 MÓDULO 5: GESTIÓN DE CONTENEDORES, BOOKINGS Y PRECINTOS DE ADUANAS
-        # =========================================================================
+        # MÓDULO 5
         st.markdown("---")
         st.markdown("### 🚢 Módulo 5: Gestión de Contenedores, Bookings y Precintos de Aduanas")
         col_cnt1, col_cnt2, col_cnt3 = st.columns(3)
@@ -534,19 +246,16 @@ if archivo is not None:
             st.write("###")
             if st.button("🔒 Registrar y Sellar Contenedor"):
                 if booking_input and contenedor_input and precinto_linea_input:
-                    guardar_contenedor_db(booking_input, contenedor_input, precinto_linea_input, precinto_senasa_input, mercado_destino, "SELLADO Y LISTO")
+                    funciones.guardar_contenedor_db(booking_input, contenedor_input, precinto_linea_input, precinto_senasa_input, mercado_destino, "SELLADO Y LISTO")
                     st.success(f"¡Contenedor `{contenedor_input}` sellado y registrado en BD con éxito!")
                 else:
                     st.error("⚠️ Complete los campos obligatorios de Booking, Contenedor y Precinto.")
 
-        lista_cont_db = cargar_contenedores_db()
+        lista_cont_db = funciones.cargar_contenedores_db()
         if lista_cont_db:
             with st.expander("📦 Ver Contenedores Registrados para Despacho"):
                 st.dataframe(pd.DataFrame(lista_cont_db), use_container_width=True)
 
-        # ==========================================
-        # 1️⃣ SELECCIÓN DE COLUMNAS PARA EL REPORTE
-        # ==========================================
         st.markdown("---")
         st.markdown("### 1️⃣ Selección de Columnas para Exportar")
         todas_cols = list(df_original.columns)
@@ -563,14 +272,8 @@ if archivo is not None:
             default=default_cols,
         )
 
-        if cols_elegidas:
-            df_export = df_original[cols_elegidas].copy()
-        else:
-            df_export = df_original.copy()
+        df_export = df_original[cols_elegidas].copy() if cols_elegidas else df_original.copy()
 
-        # ==========================================
-        # 2️⃣ LIMPIEZA, DETECCIÓN Y DESCARGA DE SOLO ERRORES EN PDF
-        # ==========================================
         st.markdown("### 2️⃣ Limpieza, Auditoría y Reporte Exclusivo de Errores")
         col_l1, col_l2, col_l3, col_l4 = st.columns([1, 1, 1, 1])
         with col_l1:
@@ -596,7 +299,7 @@ if archivo is not None:
                 mask_errores_gen = mask_errores_gen | (pesos_num_aux < peso_min_caja)
             
             df_solo_errores_dl = df_original[mask_errores_gen]
-            pdf_errores_buffer = generar_pdf_errores(df_solo_errores_dl, archivo.name, producto_sel, auditor_nombre)
+            pdf_errores_buffer = funciones.generar_pdf_errores(df_solo_errores_dl, archivo.name, producto_sel, auditor_nombre)
             
             st.download_button(
                 label="📥 Descargar Solo Errores (PDF)",
@@ -610,17 +313,13 @@ if archivo is not None:
             mask_vacios = (df_original == "").any(axis=1)
             df_solo_vacios = df_original[mask_vacios]
             if not df_solo_vacios.empty:
-                st.dataframe(df_solo_vacios.style.map(resaltar_errores_celdas), use_container_width=True)
+                st.dataframe(df_solo_vacios.style.map(funciones.resaltar_errores_celdas), use_container_width=True)
             else:
                 st.success("¡Excelente! No hay registros con celdas vacías en este archivo.")
 
-        # ==========================================
-        # 3️⃣ CONTROLES INDUSTRIALES, ESTADÍSTICAS Y GRÁFICOS
-        # ==========================================
         st.markdown("### 3️⃣ Control de Calidad, Estadísticas y Alertas")
 
         col_m1, col_m2, col_m3, col_m4 = st.columns(4)
-        
         col_pallet_chk = [c for c in df_original.columns if "PALLET" in c.upper()]
         total_pallets = df_original[col_pallet_chk[0]].nunique() if col_pallet_chk else "N/D"
         
@@ -643,10 +342,8 @@ if archivo is not None:
         if col_peso_chk:
             pesos_num = pd.to_numeric(df_original[col_peso_chk[0]], errors="coerce")
             cajas_livianas = (pesos_num < peso_min_caja).sum()
-            
             peso_promedio = round(pesos_num.mean(), 2) if not pesos_num.empty else 0
             peso_std = round(pesos_num.std(), 2) if not pesos_num.empty else 0
-            
             st.info(f"📊 **Estadística de Pesaje:** Peso Promedio del Lote: **{peso_promedio} kg** | Desviación Estándar: **{peso_std} kg**")
 
             if cajas_livianas > 0:
@@ -660,7 +357,6 @@ if archivo is not None:
                 conteo_calibres.columns = ["Calibre", "Cajas"]
                 st.write("📊 **Distribución de Calibres (Tabla):**")
                 st.dataframe(conteo_calibres.T, use_container_width=True)
-                
                 st.write("📈 **Gráfico de Calibres:**")
                 st.bar_chart(conteo_calibres.set_index("Calibre"))
 
@@ -676,17 +372,12 @@ if archivo is not None:
                 else:
                     st.success(f"✅ **Merma Bajo Control:** {porcentaje_merma}% de descarte.")
 
-        # =========================================================================
-        # 🛡️ MÓDULO DE FIRMA CRIPTOGRÁFICA DE CURVA ELÍPTICA (ECC) - MOTOR RUST
-        # =========================================================================
         st.markdown("---")
         st.markdown("### 🛡️ Módulo de Seguridad: Sello Criptográfico ECC del Lote")
-        
         resumen_datos = f"Auditoría de Planta - Cultivo: {producto_sel} - Fecha: {datetime.date.today()} - Registros: {total_filas}"
 
         try:
             llave_publica, sello_digital = motor_rust.firmar_reporte_ecc(resumen_datos)
-            
             st.success("🔒 Reporte Asegurado con Criptografía de Curva Elíptica (ECC)")
             st.code(f"Sello Digital (Firma ECC): {sello_digital}")
             st.caption(f"Llave Pública de Verificación: {llave_publica}")
@@ -695,11 +386,7 @@ if archivo is not None:
             sello_digital = "SELLO_PENDIENTE_RUST"
             st.warning(f"Sello criptográfico pendiente de sincronización con motor nativo: {e}")
 
-        # ==========================================
-        # 4️⃣ TRAZABILIDAD, OBSERVACIONES Y CIERRE CON PAGINACIÓN ANTICONGELAMIENTO
-        # ==========================================
         st.markdown("### 4️⃣ Observaciones de Turno, Edición y Cierre")
-        
         col_bus1, col_bus2, col_bus3 = st.columns(3)
         with col_bus1:
             texto_busqueda = st.text_input("🔍 Búsqueda Global (Lote/Contenedor):")
@@ -713,7 +400,6 @@ if archivo is not None:
             turno_sel = st.selectbox("🕒 Filtrar por Turno de Trabajo:", ["TODOS", "Mañana (06:00 - 14:00)", "Tarde (14:00 - 22:00)", "Noche (22:00 - 06:00)"])
 
         df_mostrar = df_export
-        
         if texto_busqueda.strip() != "":
             mask_busq = df_mostrar.astype(str).apply(
                 lambda row: row.str.contains(texto_busqueda, case=False, na=False).any(),
@@ -759,7 +445,7 @@ if archivo is not None:
                         val_nuevo = df_editado.iloc[i][col]
                         if val_orig != val_nuevo:
                             fecha_hora_cambio = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                            guardar_cambio_db(fecha_hora_cambio, i, col, val_orig, val_nuevo, auditor_nombre)
+                            funciones.guardar_cambio_db(fecha_hora_cambio, i, col, val_orig, val_nuevo, auditor_nombre)
 
         st.markdown("#### ✅ Verificaciones Fitosanitarias Obligatorias")
         chk_pulpa = st.checkbox("Se verificó la temperatura de pulpa y los límites máximos de residuos (LMR).")
@@ -783,14 +469,11 @@ if archivo is not None:
                     st.warning("Lote habilitado para modificaciones.")
                     st.rerun()
 
-        bitacora_db_data = cargar_bitacora_db()
+        bitacora_db_data = funciones.cargar_bitacora_db()
         if bitacora_db_data:
             with st.expander("📜 Ver Bitácora de Auditoría Persistente (SQLite Audit Trail)"):
                 st.dataframe(pd.DataFrame(bitacora_db_data), use_container_width=True)
 
-        # ==========================================
-        # 5️⃣ EXPORTACIÓN DE REPORTES OFICIALES
-        # ==========================================
         st.markdown("### 5️⃣ Exportación de Reportes Oficiales")
         col_ex1, col_ex2, col_ex3 = st.columns(3)
 
@@ -827,7 +510,6 @@ if archivo is not None:
 
                 for sheetname in writer.sheets:
                     worksheet = writer.sheets[sheetname]
-                    
                     red_fill = PatternFill(start_color="FFCCCC", end_color="FFCCCC", fill_type="solid")
                     for row in worksheet.iter_rows(min_row=2):
                         for cell in row:
@@ -853,7 +535,7 @@ if archivo is not None:
             )
 
         with col_ex2:
-            pdf_buffer = generar_pdf_resumen(
+            pdf_buffer = funciones.generar_pdf_resumen(
                 archivo.name,
                 total_filas,
                 total_errores,
