@@ -1,6 +1,6 @@
 use pyo3::prelude::*;
 use p256::ecdsa::{SigningKey, Signature, signature::Signer};
-use p256::elliptic_curve::rand_core::OsRng;
+use rand_core::OsRng; // <- CAMBIO AQUÍ: Importación directa y limpia
 
 /// Función de alta velocidad para validar mermas y auditorías
 #[pyfunction]
