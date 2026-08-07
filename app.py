@@ -15,9 +15,30 @@ st.set_page_config(
     layout="wide",
 )
 
-# --- CONFIGURACIÓN DE SEGURIDAD GENERAL ---
-USUARIO_CORRECTO = "calidad"
-PASSWORD_CORRECTO = "control2026"
+
+def cargar_credenciales_acceso() -> tuple[str | None, str | None, str | None]:
+    """
+    Lee el acceso de planta desde st.secrets['credenciales'].
+    Retorna (usuario, clave, error_si_falla).
+    """
+    try:
+        creds = st.secrets["credenciales"]
+        usuario = str(creds["usuario"]).strip()
+        clave = str(creds["clave"]).strip()
+        if not usuario or not clave:
+            return None, None, (
+                "st.secrets['credenciales'] está incompleto: defina `usuario` y `clave`."
+            )
+        return usuario, clave, None
+    except Exception:
+        return None, None, (
+            "No se encontraron credenciales en secrets. Configure en Streamlit Cloud "
+            "(Settings → Secrets) o en .streamlit/secrets.toml:\n\n"
+            "[credenciales]\n"
+            'usuario = "su_usuario"\n'
+            'clave = "su_clave_secreta"'
+        )
+
 
 if "autenticado" not in st.session_state:
     st.session_state["autenticado"] = False
@@ -153,11 +174,16 @@ if not st.session_state["autenticado"]:
     st.write("Introduzca sus credenciales para ingresar a la plataforma corporativa.")
     st.info("¿Solo necesita validar un PDF? Use en la barra lateral: **Verificación pública ECC**.")
 
+    usuario_correcto, password_correcto, error_creds = cargar_credenciales_acceso()
+    if error_creds:
+        st.error(error_creds)
+        st.stop()
+
     usuarioInput = st.text_input("Usuario:")
     passwordInput = st.text_input("Contraseña:", type="password")
 
     if st.button("Ingresar"):
-        if usuarioInput == USUARIO_CORRECTO and passwordInput == PASSWORD_CORRECTO:
+        if usuarioInput == usuario_correcto and passwordInput == password_correcto:
             st.session_state["autenticado"] = True
             st.success("Acceso concedido.")
             st.rerun()
