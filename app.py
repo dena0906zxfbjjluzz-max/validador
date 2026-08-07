@@ -17,19 +17,23 @@ st.set_page_config(
 
 
 def cargar_nombre_planta() -> str:
-    """Nombre genérico de la planta (secrets opcional; vacío si no se define)."""
+    """Nombre de la planta (secrets opcional; por defecto: Planta Autorizada)."""
     try:
         if "NOMBRE_PLANTA" in st.secrets:
-            return str(st.secrets["NOMBRE_PLANTA"]).strip()
+            valor = str(st.secrets["NOMBRE_PLANTA"]).strip()
+            if valor:
+                return valor
     except Exception:
         pass
     try:
         creds = st.secrets.get("credenciales")
         if creds is not None and "nombre_planta" in creds:
-            return str(creds["nombre_planta"]).strip()
+            valor = str(creds["nombre_planta"]).strip()
+            if valor:
+                return valor
     except Exception:
         pass
-    return ""
+    return "Planta Autorizada"
 
 
 
