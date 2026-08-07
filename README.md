@@ -33,9 +33,8 @@ La plataforma cuenta con una arquitectura híbrida de alto rendimiento que combi
 Cada cierre oficial de lote se sella con **Ed25519** (`ed25519-dalek` en Rust), generando **firma digital** (64 bytes) y **llave pública** (32 bytes) en hexadecimal.
 
 * **Modo real + Rust:** lee `st.secrets["LLAVE_PRIVADA"]` (seed de 32 bytes / 64 hex) y firma con `motor_rust`.
-* **Respaldo:** si Rust no carga, firma igual con esa seed usando `cryptography` (Ed25519).
-* **Modo demo:** sin secret → llave efímera.
-* **Verificación:** función Rust `verificar_firma_ed25519` + capa Python en el módulo público.
+* **Respaldo Python (sin Rust):** `cryptography` (Ed25519) → `PyNaCl` → paquete `ed25519` si existe.
+* **Verificación:** Rust `verificar_firma_ed25519` o los mismos fallbacks Python en el módulo público.
 
 ### 🔎 Verificación pública de PDF
 En la barra lateral: **Verificación pública ECC** (sin login). Un tercero sube el PDF ejecutivo y la app comprueba la firma Ed25519:

@@ -686,11 +686,10 @@ if archivo is not None:
 
             modo = st.session_state["cache_sello_ecc"].get("modo") or motor_planta.modo_firma_activo()
             backend = st.session_state["cache_sello_ecc"].get("backend") or motor_planta.motor_activo()
-            if modo == "real" and backend == "rust":
-                st.success("🔒 Sello real Ed25519 · `st.secrets['LLAVE_PRIVADA']` + motor Rust")
-            elif modo == "real":
-                st.success("🔒 Sello real Ed25519 · `st.secrets['LLAVE_PRIVADA']` (respaldo Python)")
-                st.info("Rust no quedó activo en este entorno; la firma sí usa su seed Ed25519 secreto.")
+            if modo == "real":
+                st.success(f"🔒 Sello real Ed25519 · secrets + backend `{backend}`")
+                if str(backend).startswith("python"):
+                    st.caption("Motor Rust no activo; fallback Python (cryptography / PyNaCl / ed25519).")
             else:
                 st.warning(
                     "🧪 Modo demo: no se pudo usar `st.secrets['LLAVE_PRIVADA']`. "

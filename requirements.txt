@@ -3,6 +3,7 @@ pandas
 openpyxl
 reportlab
 cryptography
+PyNaCl
 pypdf>=5.0.0
 maturin
 ./motor_rust
