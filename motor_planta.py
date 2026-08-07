@@ -1,9 +1,8 @@
 """
 Capa de acceso al motor de planta.
 
-Modo real: usa exactamente st.secrets['LLAVE_PRIVADA'].
-Preferencia de firma: motor Rust nativo; si no está compilado, cryptography.
-Modo demo: sin secret → llave efímera.
+Modo real: usa st.secrets['LLAVE_PRIVADA'] (seed Ed25519, 32 bytes / 64 hex).
+Preferencia de firma/verificación: motor Rust (ed25519-dalek); si no está, cryptography.
 """
 
 from __future__ import annotations
@@ -11,6 +10,7 @@ from __future__ import annotations
 BACKEND = "python"
 MODO_FIRMA = "demo"
 ULTIMO_DIAGNOSTICO = "Sin diagnóstico aún"
+ALGORITMO = "Ed25519"
 
 try:
     import motor_rust as _motor_rust
@@ -44,7 +44,6 @@ def validar_datos_planta(total_filas: float | int, mermas: float | int) -> tuple
 
     if _motor_rust is not None:
         try:
-            # PyO3 espera enteros para usize
             return _motor_rust.validar_datos_planta(int(total), errores)
         except Exception:
             pass
@@ -74,7 +73,6 @@ def _normalizar_llave_hex(valor) -> str | None:
 
 
 def _buscar_llave_anidada(obj, nombre: str = "LLAVE_PRIVADA", ruta: str = "st.secrets"):
-    """Busca LLAVE_PRIVADA en el nivel actual o dentro de secciones TOML anidadas."""
     try:
         if nombre in obj:
             return obj[nombre], f"{ruta}['{nombre}']"
@@ -91,7 +89,6 @@ def _buscar_llave_anidada(obj, nombre: str = "LLAVE_PRIVADA", ruta: str = "st.se
             hijo = obj[k]
         except Exception:
             continue
-        # Secciones tipo [credenciales]
         if hasattr(hijo, "keys"):
             hallado, ruta_hallada = _buscar_llave_anidada(hijo, nombre, f"{ruta}['{k}']")
             if hallado is not None:
@@ -101,10 +98,7 @@ def _buscar_llave_anidada(obj, nombre: str = "LLAVE_PRIVADA", ruta: str = "st.se
 
 def leer_llave_privada_secrets() -> str | None:
     """
-    Busca LLAVE_PRIVADA en st.secrets:
-    1) st.secrets['LLAVE_PRIVADA']
-    2) st.secrets['credenciales']['LLAVE_PRIVADA'] (formato común en Cloud)
-    3) cualquier sección anidada con esa clave
+    Busca LLAVE_PRIVADA en st.secrets (seed Ed25519 de 32 bytes en hex).
     """
     global ULTIMO_DIAGNOSTICO
 
@@ -128,14 +122,12 @@ def leer_llave_privada_secrets() -> str | None:
     valor = None
     origen = None
 
-    # 1) Exacto en raíz
     try:
         valor = secrets_obj["LLAVE_PRIVADA"]
         origen = "st.secrets['LLAVE_PRIVADA']"
     except Exception:
         valor = None
 
-    # 2) Bloque [credenciales] (lo que muestra tu diagnóstico en Cloud)
     if valor is None:
         try:
             valor = secrets_obj["credenciales"]["LLAVE_PRIVADA"]
@@ -143,7 +135,6 @@ def leer_llave_privada_secrets() -> str | None:
         except Exception:
             valor = None
 
-    # 3) Búsqueda anidada genérica
     if valor is None:
         valor, origen = _buscar_llave_anidada(secrets_obj)
 
@@ -151,11 +142,8 @@ def leer_llave_privada_secrets() -> str | None:
         ULTIMO_DIAGNOSTICO = (
             "No existe LLAVE_PRIVADA en secrets. "
             f"Claves vistas en secrets: {disponibles or '(ninguna)'}. "
-            "Opciones válidas en Cloud → Settings → Secrets:\n"
-            'LLAVE_PRIVADA = "tu_hex_de_64_caracteres"\n'
-            "o bien:\n"
-            "[credenciales]\n"
-            'LLAVE_PRIVADA = "tu_hex_de_64_caracteres"'
+            "Use un seed Ed25519 hex de 64 caracteres:\n"
+            'LLAVE_PRIVADA = "tu_seed_hex_ed25519"'
         )
         return None
 
@@ -163,56 +151,51 @@ def leer_llave_privada_secrets() -> str | None:
     if texto is None:
         crudo = str(valor).strip()
         ULTIMO_DIAGNOSTICO = (
-            f"Se encontró {origen} pero el valor no es hex de 64 caracteres "
-            f"(longitud actual={len(''.join(crudo.split()))}). "
-            "Póngala entre comillas en Secrets."
+            f"Se encontró {origen} pero no es seed hex de 64 caracteres "
+            f"(longitud actual={len(''.join(crudo.split()))})."
         )
         return None
 
-    ULTIMO_DIAGNOSTICO = f"LLAVE_PRIVADA leída correctamente desde {origen}"
+    ULTIMO_DIAGNOSTICO = f"LLAVE_PRIVADA (Ed25519) leída desde {origen}"
     return texto
 
 
 def _cargar_llave_privada(llave_privada: str):
+    """Carga seed Ed25519 (hex 32 bytes) o PEM PKCS8."""
     from cryptography.hazmat.primitives import serialization
-    from cryptography.hazmat.primitives.asymmetric import ec
+    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
     texto = llave_privada.strip()
     if "BEGIN" in texto:
-        return serialization.load_pem_private_key(texto.encode("utf-8"), password=None)
+        key = serialization.load_pem_private_key(texto.encode("utf-8"), password=None)
+        if not isinstance(key, Ed25519PrivateKey):
+            raise ValueError("El PEM no es una llave privada Ed25519.")
+        return key
 
     hex_limpia = "".join(texto.split()).lower().removeprefix("0x")
     if len(hex_limpia) != 64:
-        raise ValueError(
-            "LLAVE_PRIVADA debe ser un hex de 64 caracteres (32 bytes) o un PEM PKCS8."
-        )
-    valor = int(hex_limpia, 16)
-    if valor <= 0:
-        raise ValueError("LLAVE_PRIVADA hex inválida.")
-    return ec.derive_private_key(valor, ec.SECP256R1())
+        raise ValueError("LLAVE_PRIVADA debe ser seed hex de 64 caracteres (32 bytes) o PEM Ed25519.")
+    return Ed25519PrivateKey.from_private_bytes(bytes.fromhex(hex_limpia))
 
 
 def _firmar_con_cryptography(datos_reporte: str, private_key) -> tuple[str, str]:
-    from cryptography.hazmat.primitives import hashes, serialization
-    from cryptography.hazmat.primitives.asymmetric import ec
-    from cryptography.hazmat.primitives.asymmetric.utils import decode_dss_signature
+    from cryptography.hazmat.primitives import serialization
+    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+
+    if not isinstance(private_key, Ed25519PrivateKey):
+        raise TypeError("Se esperaba Ed25519PrivateKey")
 
     public_key = private_key.public_key()
-    firma_der = private_key.sign(
-        datos_reporte.encode("utf-8"),
-        ec.ECDSA(hashes.SHA256()),
-    )
-    r, s = decode_dss_signature(firma_der)
-    firma_hex = f"{r:064x}{s:064x}"
+    firma = private_key.sign(datos_reporte.encode("utf-8"))
     pub_hex = public_key.public_bytes(
-        encoding=serialization.Encoding.X962,
-        format=serialization.PublicFormat.UncompressedPoint,
+        encoding=serialization.Encoding.Raw,
+        format=serialization.PublicFormat.Raw,
     ).hex()
-    return pub_hex, firma_hex
+    return pub_hex, firma.hex()
 
 
 def llave_publica_oficial_hex() -> str | None:
-    """Deriva la llave pública oficial desde st.secrets['LLAVE_PRIVADA'] (sin exponer la privada)."""
+    """Deriva la llave pública oficial Ed25519 desde st.secrets['LLAVE_PRIVADA']."""
     from cryptography.hazmat.primitives import serialization
 
     secreta = leer_llave_privada_secrets()
@@ -220,8 +203,8 @@ def llave_publica_oficial_hex() -> str | None:
         return None
     private_key = _cargar_llave_privada(secreta)
     return private_key.public_key().public_bytes(
-        encoding=serialization.Encoding.X962,
-        format=serialization.PublicFormat.UncompressedPoint,
+        encoding=serialization.Encoding.Raw,
+        format=serialization.PublicFormat.Raw,
     ).hex()
 
 
@@ -231,36 +214,44 @@ def verificar_firma_ecc(
     llave_publica_hex: str,
 ) -> tuple[bool, str]:
     """
-    Verifica matemáticamente una firma ECDSA P-256 (SHA-256).
-    Devuelve (ok, detalle).
+    Verifica matemáticamente una firma Ed25519.
+    Preferencia: motor Rust; respaldo: cryptography.
     """
     from cryptography.exceptions import InvalidSignature
-    from cryptography.hazmat.primitives import hashes
-    from cryptography.hazmat.primitives.asymmetric import ec
-    from cryptography.hazmat.primitives.asymmetric.utils import encode_dss_signature
+    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
+
+    pub_limpia = "".join(str(llave_publica_hex).split()).lower().removeprefix("0x")
+    firma_limpia = "".join(str(firma_hex).split()).lower().removeprefix("0x")
+
+    # Preferir Rust
+    if _motor_rust is not None and hasattr(_motor_rust, "verificar_firma_ed25519"):
+        try:
+            ok, detalle_rust = _motor_rust.verificar_firma_ed25519(
+                mensaje, firma_limpia, pub_limpia
+            )
+            if not ok:
+                return False, detalle_rust
+            oficial = llave_publica_oficial_hex()
+            if oficial and oficial.lower() == pub_limpia.lower():
+                return True, "AUTÉNTICO: firma Ed25519 válida y emitida con la llave oficial de planta"
+            if oficial:
+                return True, (
+                    "Firma Ed25519 matemáticamente válida, pero la llave pública NO coincide "
+                    "con la llave oficial de planta (posible emisor no autorizado)"
+                )
+            return True, "AUTÉNTICO: firma Ed25519 válida"
+        except Exception as e:
+            # Continúa con cryptography
+            _ = e
 
     try:
-        pub_limpia = "".join(str(llave_publica_hex).split()).lower().removeprefix("0x")
-        firma_limpia = "".join(str(firma_hex).split()).lower().removeprefix("0x")
         if len(firma_limpia) != 128:
-            return False, f"Firma inválida: se esperan 128 hex (r||s), hay {len(firma_limpia)}"
-        if len(pub_limpia) not in (128, 130):
-            # 130 = 65 bytes uncompressed (04||X||Y); 128 = rare raw X||Y
-            return False, f"Llave pública inválida: longitud hex={len(pub_limpia)}"
+            return False, f"Firma inválida: se esperan 128 hex (64 bytes), hay {len(firma_limpia)}"
+        if len(pub_limpia) != 64:
+            return False, f"Llave pública inválida: se esperan 64 hex (Ed25519), hay {len(pub_limpia)}"
 
-        pub_bytes = bytes.fromhex(pub_limpia)
-        if len(pub_bytes) == 64:
-            pub_bytes = b"\x04" + pub_bytes
-
-        public_key = ec.EllipticCurvePublicKey.from_encoded_point(ec.SECP256R1(), pub_bytes)
-        r = int(firma_limpia[:64], 16)
-        s = int(firma_limpia[64:], 16)
-        firma_der = encode_dss_signature(r, s)
-        public_key.verify(
-            firma_der,
-            mensaje.encode("utf-8"),
-            ec.ECDSA(hashes.SHA256()),
-        )
+        public_key = Ed25519PublicKey.from_public_bytes(bytes.fromhex(pub_limpia))
+        public_key.verify(bytes.fromhex(firma_limpia), mensaje.encode("utf-8"))
     except InvalidSignature:
         return False, "Firma NO válida: el PDF fue alterado o no corresponde al mensaje firmado"
     except Exception as e:
@@ -268,17 +259,14 @@ def verificar_firma_ecc(
 
     oficial = llave_publica_oficial_hex()
     if oficial:
-        pub_norm = pub_limpia.lower()
-        of_norm = oficial.lower()
-        mismas = pub_norm == of_norm or pub_norm == of_norm[2:] or f"04{pub_norm}" == of_norm
-        if mismas:
-            return True, "AUTÉNTICO: firma ECC válida y emitida con la llave oficial de planta"
+        if oficial.lower() == pub_limpia.lower():
+            return True, "AUTÉNTICO: firma Ed25519 válida y emitida con la llave oficial de planta"
         return True, (
-            "Firma ECC matemáticamente válida, pero la llave pública NO coincide "
+            "Firma Ed25519 matemáticamente válida, pero la llave pública NO coincide "
             "con la llave oficial de planta (posible emisor no autorizado)"
         )
 
-    return True, "Firma ECC matemáticamente válida (no hay llave oficial en secrets para contrastar emisor)"
+    return True, "Firma Ed25519 matemáticamente válida (no hay llave oficial en secrets para contrastar emisor)"
 
 
 def auditar_sello_pdf(datos_sello: dict) -> dict:
@@ -291,7 +279,7 @@ def auditar_sello_pdf(datos_sello: dict) -> dict:
         return {
             "ok": False,
             "estado": "INCOMPLETO",
-            "detalle": "El PDF no contiene mensaje, firma y llave pública ECC parseables",
+            "detalle": "El PDF no contiene mensaje, firma y llave pública Ed25519 parseables",
             "mensaje": mensaje,
             "firma": firma,
             "llave_publica": publica,
@@ -313,7 +301,7 @@ def firmar_reporte_ecc(
     llave_privada: str | None = None,
 ) -> tuple[str, str]:
     """
-    Devuelve (llave_publica_hex, firma_hex) con ECDSA P-256.
+    Devuelve (llave_publica_hex, firma_hex) con Ed25519.
 
     1) Modo real + Rust si hay LLAVE_PRIVADA y motor_rust
     2) Modo real + cryptography si hay LLAVE_PRIVADA pero no Rust
@@ -324,16 +312,15 @@ def firmar_reporte_ecc(
     secreta = llave_privada if llave_privada is not None else leer_llave_privada_secrets()
 
     if secreta:
-        # Preferir Rust con la misma llave del secret
         if _motor_rust is not None:
             try:
                 pub_hex, firma_hex = _motor_rust.firmar_reporte_ecc(datos_reporte, secreta)
                 MODO_FIRMA = "real"
                 BACKEND = "rust"
-                ULTIMO_DIAGNOSTICO = "Firma real con motor_rust + st.secrets['LLAVE_PRIVADA']"
+                ULTIMO_DIAGNOSTICO = "Firma Ed25519 real con motor_rust + st.secrets['LLAVE_PRIVADA']"
                 return pub_hex, firma_hex
             except Exception as e:
-                ULTIMO_DIAGNOSTICO = f"Rust falló con LLAVE_PRIVADA; respaldo cryptography: {e}"
+                ULTIMO_DIAGNOSTICO = f"Rust falló con LLAVE_PRIVADA; respaldo cryptography Ed25519: {e}"
 
         private_key = _cargar_llave_privada(secreta)
         pub_hex, firma_hex = _firmar_con_cryptography(datos_reporte, private_key)
@@ -341,34 +328,32 @@ def firmar_reporte_ecc(
         BACKEND = "python"
         if "Rust falló" not in ULTIMO_DIAGNOSTICO:
             ULTIMO_DIAGNOSTICO = (
-                "Firma real con cryptography + st.secrets['LLAVE_PRIVADA'] "
+                "Firma Ed25519 real con cryptography + st.secrets['LLAVE_PRIVADA'] "
                 "(motor_rust no disponible en este entorno)"
             )
         return pub_hex, firma_hex
 
-    # Modo demo (sin secret)
     MODO_FIRMA = "demo"
     if _motor_rust is not None:
         try:
             pub_hex, firma_hex = _motor_rust.firmar_reporte_ecc(datos_reporte, None)
             BACKEND = "rust"
             ULTIMO_DIAGNOSTICO = (
-                "Modo demo: sin LLAVE_PRIVADA. Firma efímera con motor_rust. "
+                "Modo demo: sin LLAVE_PRIVADA. Firma Ed25519 efímera con motor_rust. "
                 + ULTIMO_DIAGNOSTICO
             )
             return pub_hex, firma_hex
         except TypeError:
-            # Compatibilidad con build viejo sin 2º argumento
             pub_hex, firma_hex = _motor_rust.firmar_reporte_ecc(datos_reporte)
             BACKEND = "rust"
             return pub_hex, firma_hex
         except Exception as e:
             ULTIMO_DIAGNOSTICO = f"Demo Rust falló: {e}"
 
-    from cryptography.hazmat.primitives.asymmetric import ec
+    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
     BACKEND = "python"
-    private_key = ec.generate_private_key(ec.SECP256R1())
+    private_key = Ed25519PrivateKey.generate()
     if "No existe st.secrets" not in ULTIMO_DIAGNOSTICO and "LLAVE_PRIVADA" not in ULTIMO_DIAGNOSTICO:
-        ULTIMO_DIAGNOSTICO = "Modo demo: sin LLAVE_PRIVADA y sin motor_rust; firma efímera Python"
+        ULTIMO_DIAGNOSTICO = "Modo demo: sin LLAVE_PRIVADA y sin motor_rust; firma Ed25519 efímera Python"
     return _firmar_con_cryptography(datos_reporte, private_key)

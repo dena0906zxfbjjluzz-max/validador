@@ -9,6 +9,6 @@ crate-type = ["cdylib"]
 
 [dependencies]
 pyo3 = { version = "0.22", features = ["extension-module"] }
-p256 = { version = "0.13", features = ["ecdsa", "pkcs8"] }
-rand_core = { version = "0.6", features = ["std"] }
+ed25519-dalek = { version = "2", features = ["rand_core"] }
+rand = "0.8"
 hex = "0.4"

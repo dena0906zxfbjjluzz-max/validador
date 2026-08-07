@@ -29,22 +29,16 @@ La plataforma cuenta con una arquitectura híbrida de alto rendimiento que combi
 
 ## 🛡️ Diferenciadores Tecnológicos Avanzados
 
-### ⚡ Motor Criptográfico ECC P-256 (real + demo)
-Cada cierre oficial de lote se sella con **ECDSA sobre curva P-256**, generando **firma digital** y **llave pública** en hexadecimal.
+### ⚡ Motor criptográfico Ed25519 (real + demo)
+Cada cierre oficial de lote se sella con **Ed25519** (`ed25519-dalek` en Rust), generando **firma digital** (64 bytes) y **llave pública** (32 bytes) en hexadecimal.
 
-* **Modo real + Rust:** lee exactamente `st.secrets["LLAVE_PRIVADA"]` y firma con `motor_rust` (compilación vía Maturin en Cloud).
-* **Respaldo:** si Rust no carga, firma igual con esa llave usando `cryptography`.
+* **Modo real + Rust:** lee `st.secrets["LLAVE_PRIVADA"]` (seed de 32 bytes / 64 hex) y firma con `motor_rust`.
+* **Respaldo:** si Rust no carga, firma igual con esa seed usando `cryptography` (Ed25519).
 * **Modo demo:** sin secret → llave efímera.
-* En Cloud, Secrets debe quedar así (con comillas):
-
-```toml
-LLAVE_PRIVADA = "3d3c988092632e2e4ecfbf60989822344ef0168166f6ea84282441a780b1f3c0"
-```
-
-Tras cambiar Secrets o el código: **Reboot** de la app. La UI muestra un diagnóstico si el secret no se encuentra.
+* **Verificación:** función Rust `verificar_firma_ed25519` + capa Python en el módulo público.
 
 ### 🔎 Verificación pública de PDF
-En la barra lateral: **Verificación pública ECC** (sin login). Un tercero sube el PDF ejecutivo y la app comprueba la firma ECDSA P-256:
+En la barra lateral: **Verificación pública ECC** (sin login). Un tercero sube el PDF ejecutivo y la app comprueba la firma Ed25519:
 - **AUTÉNTICO:** firma válida + llave oficial de planta
 - **ALTERADO:** la firma no corresponde al mensaje (documento manipulado)
 

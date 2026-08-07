@@ -664,7 +664,7 @@ def generar_pdf_resumen(
         f"[ECC_HASH]{calcular_hash_reporte(mensaje_ref, firma_ECDSA, llave_publica)}[/ECC_HASH]"
     )
     sello_data = [
-        [Paragraph("<b>Sello Criptográfico de Curva Elíptica (ECC / P-256):</b>", styles["Normal"])],
+        [Paragraph("<b>Sello Criptográfico Ed25519:</b>", styles["Normal"])],
         [Paragraph(f"<font size=7 face='Courier'><b>Mensaje firmado:</b> {mensaje_ref}</font>", styles["Normal"])],
         [Paragraph(f"<font size=7 face='Courier'><b>Firma:</b> {firma_ECDSA}</font>", styles["Normal"])],
         [Paragraph(f"<font size=7 face='Courier'><b>Llave Pública:</b> {llave_publica}</font>", styles["Normal"])],

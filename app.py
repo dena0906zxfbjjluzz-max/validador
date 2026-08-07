@@ -96,7 +96,7 @@ if modo_app == "Verificación pública ECC":
     st.title("Verificación pública de sello ECC")
     st.write(
         "Suba el PDF ejecutivo firmado para comprobar matemáticamente si la firma "
-        "ECDSA P-256 es auténtica o si el documento fue alterado."
+        "Ed25519 es auténtica o si el documento fue alterado."
     )
 
     pdf_verif = st.file_uploader(
@@ -107,8 +107,8 @@ if modo_app == "Verificación pública ECC":
 
     with st.expander("Verificación manual (si el PDF no se puede leer)"):
         mensaje_manual = st.text_input("Mensaje firmado", key="msg_manual_ecc")
-        firma_manual = st.text_area("Firma hex (128 caracteres)", key="firma_manual_ecc")
-        pub_manual = st.text_area("Llave pública hex", key="pub_manual_ecc")
+        firma_manual = st.text_area("Firma hex Ed25519 (128 caracteres)", key="firma_manual_ecc")
+        pub_manual = st.text_area("Llave pública hex Ed25519 (64 caracteres)", key="pub_manual_ecc")
         usar_manual = st.checkbox("Usar datos manuales en lugar del PDF", key="usar_manual_ecc")
 
     if st.button("Verificar autenticidad ECC", type="primary"):
@@ -662,12 +662,13 @@ if archivo is not None:
         resumen_datos = f"Auditoría de Planta - Cultivo: {producto_sel} - Fecha: {datetime.date.today()} - Registros: {total_filas}"
 
         try:
-            # Reutilizar el mismo sello en reruns de Streamlit (ECDSA no es determinista)
+            # Reutilizar el mismo sello en reruns de Streamlit
             cache_sello = st.session_state.get("cache_sello_ecc")
             if (
                 not cache_sello
                 or cache_sello.get("mensaje") != resumen_datos
                 or cache_sello.get("archivo") != archivo.name
+                or cache_sello.get("algo") != "Ed25519"
             ):
                 llave_publica, sello_digital = motor_planta.firmar_reporte_ecc(resumen_datos)
                 st.session_state["cache_sello_ecc"] = {
@@ -677,6 +678,7 @@ if archivo is not None:
                     "sello_digital": sello_digital,
                     "modo": motor_planta.modo_firma_activo(),
                     "backend": motor_planta.motor_activo(),
+                    "algo": "Ed25519",
                 }
             else:
                 llave_publica = cache_sello["llave_publica"]
@@ -685,14 +687,14 @@ if archivo is not None:
             modo = st.session_state["cache_sello_ecc"].get("modo") or motor_planta.modo_firma_activo()
             backend = st.session_state["cache_sello_ecc"].get("backend") or motor_planta.motor_activo()
             if modo == "real" and backend == "rust":
-                st.success("🔒 Sello real ECC P-256 · `st.secrets['LLAVE_PRIVADA']` + motor Rust")
+                st.success("🔒 Sello real Ed25519 · `st.secrets['LLAVE_PRIVADA']` + motor Rust")
             elif modo == "real":
-                st.success("🔒 Sello real ECC P-256 · `st.secrets['LLAVE_PRIVADA']` (respaldo Python)")
-                st.info("Rust no quedó activo en este entorno; la firma sí usa su llave secreta.")
+                st.success("🔒 Sello real Ed25519 · `st.secrets['LLAVE_PRIVADA']` (respaldo Python)")
+                st.info("Rust no quedó activo en este entorno; la firma sí usa su seed Ed25519 secreto.")
             else:
                 st.warning(
                     "🧪 Modo demo: no se pudo usar `st.secrets['LLAVE_PRIVADA']`. "
-                    "Se firmó con llave efímera."
+                    "Se firmó con llave Ed25519 efímera."
                 )
             st.code(f"Sello Digital (Firma ECC): {sello_digital}")
             st.caption(f"Llave Pública de Verificación: {llave_publica}")
