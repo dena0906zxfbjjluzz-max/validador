@@ -29,9 +29,11 @@ La plataforma cuenta con una arquitectura híbrida de alto rendimiento que combi
 
 ## 🛡️ Diferenciadores Tecnológicos Avanzados
 
-### ⚡ Motor Criptográfico en Rust Nativo (ECC P-256)
-Para garantizar la inmutabilidad de los datos ante aduanas y auditorías internacionales exigentes (como GlobalGAP o BRC), el sistema delega las tareas críticas de seguridad a un módulo binario nativo compilado en **Rust** (usando `PyO3` y `Maturin`). 
-Cada cierre oficial de lote es sellado matemáticamente, generando **Firmas Digitales (Sello ECC)** y **Llaves Públicas de Verificación** dinámicas en formato hexadecimal puro, imposibles de falsificar.
+### ⚡ Motor Criptográfico ECC P-256 (Rust + respaldo Cloud)
+Cada cierre oficial de lote se sella con **ECDSA sobre curva P-256**, generando **firma digital** y **llave pública** en hexadecimal.
+
+* **Local / con Rust compilado:** usa el módulo nativo `motor_rust` (PyO3 + Maturin).
+* **Streamlit Cloud:** si el binario Rust no está disponible, `motor_planta.py` aplica el mismo esquema ECC con la librería `cryptography`, para que el sello funcione también en la nube.
 
 ### 💼 Interoperabilidad Universal ERP (SAP / Oracle)
 El sistema incluye un algoritmo de limpieza y auditoría que corrige caracteres corruptos, elimina espacios invisibles y parcha celdas vacías de forma masiva en milisegundos. Permite la exportación directa en formato plano universal **(CSV Puro)** optimizado para la inyección masiva de datos limpios directamente en los módulos logísticos de ERPs corporativos sin bloqueos de formato.

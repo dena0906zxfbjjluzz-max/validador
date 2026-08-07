@@ -1,5 +1,4 @@
 import streamlit as st
-import sys
 import datetime
 import io
 import pandas as pd
@@ -7,9 +6,8 @@ import pandas as pd
 from openpyxl.styles import PatternFill
 from openpyxl.utils import get_column_letter
 
-sys.path.append("motor_rust")
-import motor_rust
 import funciones
+import motor_planta
 
 # --- CONFIGURACIÓN DE SEGURIDAD GENERAL ---
 USUARIO_CORRECTO = "calidad"
@@ -114,7 +112,14 @@ archivo = st.file_uploader(
 
 if archivo is not None:
     try:
-        df_original = funciones.cargar_datos_archivo(archivo)
+        archivo_key = f"{archivo.name}_{archivo.size}"
+        if st.session_state.get("archivo_activo") != archivo_key:
+            st.session_state["archivo_activo"] = archivo_key
+            st.session_state["df_trabajo"] = funciones.cargar_datos_archivo(archivo)
+            st.session_state["lote_congelado"] = False
+
+        df_original = st.session_state["df_trabajo"]
+        cols_traza = funciones.mapear_columnas_trazabilidad(df_original)
 
         columnas_requeridas = ["LOTE", "PESO", "CALIBRE"]
         columnas_actuales_mayus = [c.upper() for c in df_original.columns]
@@ -125,6 +130,7 @@ if archivo is not None:
 
         if "Observaciones_Rechazo" not in df_original.columns:
             df_original["Observaciones_Rechazo"] = ""
+            st.session_state["df_trabajo"] = df_original
 
         total_filas = len(df_original)
         total_columnas = len(df_original.columns)
@@ -136,8 +142,11 @@ if archivo is not None:
         celdas_totales = total_filas * total_columnas
         
         try:
-            eficiencia_rust, estado_rust = motor_rust.validar_datos_planta(float(total_filas), float(total_errores))
+            eficiencia_rust, estado_rust = motor_planta.validar_datos_planta(
+                float(total_filas), float(total_errores)
+            )
             porcentaje_limpio = round(eficiencia_rust, 1)
+            estado_rust = f"{estado_rust} [{motor_planta.motor_activo()}]"
         except Exception:
             porcentaje_limpio = (
                 round(((celdas_totales - total_errores) / celdas_totales) * 100, 1)
@@ -173,64 +182,184 @@ if archivo is not None:
         st.markdown("### 🔌 Módulo 1: Conexión de Balanza y Lectura Rápida de Pallets (SSCC)")
         col_b1, col_b2 = st.columns(2)
         with col_b1:
-            st.info("⚡ **Balanza en línea (Puerto Serial/USB):** Simule la captura del peso automático de plataforma.")
+            st.info("⚡ **Balanza en línea:** el peso se escribe en la última fila de la columna PESO del archivo cargado.")
             peso_capturado = st.number_input("Peso Neto capturado desde Balanza (kg):", value=4.5, step=0.1)
             if st.button("📥 Registrar Peso en Última Fila"):
-                st.success(f"¡Peso de {peso_capturado} kg inyectado correctamente al flujo de empaque!")
+                df_nuevo, ok_peso, col_peso_usada = funciones.registrar_peso_ultima_fila(df_original, peso_capturado)
+                if ok_peso:
+                    st.session_state["df_trabajo"] = df_nuevo
+                    df_original = df_nuevo
+                    funciones.guardar_cambio_db(
+                        datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                        len(df_original) - 1,
+                        col_peso_usada,
+                        "(balanza)",
+                        str(peso_capturado),
+                        auditor_nombre,
+                    )
+                    st.success(f"Peso de {peso_capturado} kg registrado en la última fila (columna `{col_peso_usada}`).")
+                    st.rerun()
+                else:
+                    st.error("No se encontró una columna de PESO en el archivo, o el archivo está vacío.")
         with col_b2:
-            st.info("🔫 **Lector GS1-128 / SSCC:** Escaneo rápido para identificar unidades logísticas.")
+            st.info("🔫 **Lector GS1-128 / SSCC:** busca el código en el archivo cargado (CAJA, SSCC, PALLET, CODIGO, LOTE).")
             sscc_input = st.text_input("Escanear Código SSCC o Caja:", placeholder="Ej: 077512345678901234")
             if sscc_input:
-                st.success(f"Pallet/Caja identificada mediante código de barras: **{sscc_input}**")
+                df_sscc = funciones.buscar_registros_por_codigo(df_original, sscc_input)
+                if df_sscc.empty:
+                    st.error(f"Código `{sscc_input}` no encontrado en la base cargada.")
+                else:
+                    st.success(f"Unidad encontrada: **{sscc_input}** ({len(df_sscc)} registro(s))")
+                    st.dataframe(df_sscc, width="stretch", hide_index=True)
 
         # MÓDULO 2
         st.markdown("---")
         st.markdown("### 🧪 Módulo 2: Control de Límites Máximos de Residuos (LMR) y Certificación SENASA")
+        lotes_disponibles = []
+        if cols_traza["lote"]:
+            lotes_disponibles = sorted(
+                [x for x in df_original[cols_traza["lote"]].astype(str).str.strip().unique() if x and x != "nan"]
+            )
+        lote_default = lotes_disponibles[0] if lotes_disponibles else ""
         col_mle1, col_mle2, col_mle3 = st.columns(3)
         with col_mle1:
-            lote_lmr_sel = st.text_input("Ingrese Lote a Consultar LMR:", value="LOTE-001")
-        with col_mle2:
-            analisis_lab = st.selectbox("Resultado Criptográfico / Análisis Lab Químico:", ["Conforme (Bajo LMR)", "Alerta (Cercano al Límite)", "Rechazado (Supera LMR)"])
-        with col_mle3:
-            st.write("###")
-            if analisis_lab == "Conforme (Bajo LMR)":
-                st.success("🟢 **SENASA / Destino:** APROBADO (Cumple normativas internacionales)")
-            elif analisis_lab == "Alerta (Cercano al Límite)":
-                st.warning("🟡 **SENASA / Destino:** EN CUARENTENA (Requiere contraanálisis)")
+            if lotes_disponibles:
+                lote_lmr_sel = st.selectbox("Lote a consultar LMR:", options=lotes_disponibles, index=0)
             else:
-                st.error("🔴 **SENASA / Destino:** BLOQUEADO DE PLANTA (No exportable)")
+                lote_lmr_sel = st.text_input("Ingrese Lote a Consultar LMR:", value=lote_default, placeholder="Ej: LOTE-001")
+        with col_mle2:
+            analisis_lab = st.selectbox(
+                "Resultado de laboratorio (manual / respaldo):",
+                ["Usar dato del archivo", "Conforme (Bajo LMR)", "Alerta (Cercano al Límite)", "Rechazado (Supera LMR)"],
+            )
+        with col_mle3:
+            estado_lmr = "sin_dato"
+            detalle_lmr = "Sin lote consultado"
+            df_lote_lmr = pd.DataFrame()
+            if lote_lmr_sel:
+                df_lote_lmr = funciones.buscar_registros_por_codigo(df_original, lote_lmr_sel)
+                if cols_traza["lote"] and df_lote_lmr.empty:
+                    mask_lote = df_original[cols_traza["lote"]].astype(str).str.strip().str.fullmatch(
+                        str(lote_lmr_sel).strip(), case=False, na=False
+                    )
+                    df_lote_lmr = df_original.loc[mask_lote].copy()
+
+                if analisis_lab != "Usar dato del archivo":
+                    if "Conforme" in analisis_lab:
+                        estado_lmr = "conforme"
+                    elif "Alerta" in analisis_lab:
+                        estado_lmr = "alerta"
+                    else:
+                        estado_lmr = "rechazado"
+                    detalle_lmr = analisis_lab
+                elif not df_lote_lmr.empty and cols_traza["lmr"]:
+                    valores_lmr = df_lote_lmr[cols_traza["lmr"]].astype(str).str.strip()
+                    estados = [funciones.interpretar_estado_lmr(v) for v in valores_lmr if v and v != "nan"]
+                    if "rechazado" in estados:
+                        estado_lmr = "rechazado"
+                    elif "alerta" in estados:
+                        estado_lmr = "alerta"
+                    elif "conforme" in estados:
+                        estado_lmr = "conforme"
+                    detalle_lmr = ", ".join(sorted(set(valores_lmr.head(5))))
+                elif df_lote_lmr.empty:
+                    detalle_lmr = "Lote no encontrado en archivo"
+                else:
+                    detalle_lmr = "Lote hallado, sin columna LMR; use el selector manual"
+
+            if estado_lmr == "conforme":
+                st.success(f"🟢 **SENASA / Destino:** APROBADO — {detalle_lmr}")
+            elif estado_lmr == "alerta":
+                st.warning(f"🟡 **SENASA / Destino:** EN CUARENTENA — {detalle_lmr}")
+            elif estado_lmr == "rechazado":
+                st.error(f"🔴 **SENASA / Destino:** BLOQUEADO DE PLANTA — {detalle_lmr}")
+            else:
+                st.info(f"ℹ️ **SENASA / Destino:** Sin veredicto automático — {detalle_lmr}")
+
+        if lote_lmr_sel and not df_lote_lmr.empty:
+            with st.expander(f"Registros del lote `{lote_lmr_sel}` ({len(df_lote_lmr)})"):
+                st.dataframe(df_lote_lmr, width="stretch", hide_index=True)
 
         # MÓDULO 3
         st.markdown("---")
         st.markdown("### 🗺️ Módulo 3: Trazabilidad Inversa (De Caja o Pallet al Fundo de Origen)")
         col_inv1, col_inv2 = st.columns([2, 3])
         with col_inv1:
-            caja_busqueda_inversa = st.text_input("🔍 Ingrese ID de Caja o Pallet para Trazabilidad Inversa:", placeholder="Ej: CJ-9842 o Pallet #12")
+            caja_busqueda_inversa = st.text_input(
+                "🔍 Ingrese ID de Caja o Pallet para Trazabilidad Inversa:",
+                placeholder="Ej: CJ-9842 / SSCC / LOTE",
+            )
+            cols_detectadas = [f"`{v}` ({k})" for k, v in cols_traza.items() if v]
+            if cols_detectadas:
+                st.caption("Columnas detectadas: " + ", ".join(cols_detectadas[:8]))
+            else:
+                st.caption("No se detectaron columnas típicas de trazabilidad; se buscará en todo el archivo.")
         with col_inv2:
             if caja_busqueda_inversa:
-                st.markdown(f"""
-                **🌳 Árbol Genealógico de Trazabilidad para `{caja_busqueda_inversa}`:**
-                * **Fundo de Origen:** Fundo Santa Elena - Sector Norte (Parcela 4B)
-                * **Productor Registrado:** Agroexportadora del Norte S.A.C.
-                * **Fecha y Hora de Cosecha:** {datetime.datetime.now().strftime('%Y-%m-%d')} 06:30 AM
-                * **Línea de Proceso / Packing:** Línea 02 - Turno Mañana
-                * **Inspector Responsable:** {auditor_nombre}
-                """)
+                df_traza = funciones.buscar_registros_por_codigo(df_original, caja_busqueda_inversa)
+                if df_traza.empty:
+                    st.error(
+                        f"No se encontró trazabilidad para `{caja_busqueda_inversa}`. "
+                        "Verifique que el ID exista en columnas CAJA, PALLET, SSCC, CODIGO o LOTE."
+                    )
+                else:
+                    arbol = funciones.armar_arbol_trazabilidad(
+                        df_traza.iloc[0], cols_traza, auditor_nombre, caja_busqueda_inversa
+                    )
+                    st.markdown(
+                        f"""
+**Árbol genealógico de trazabilidad para `{arbol['codigo']}`**
+
+- **Fundo / Parcela:** {arbol['fundo']}
+- **Productor registrado:** {arbol['productor']}
+- **Lote de proceso:** {arbol['lote']}
+- **Fecha de cosecha:** {arbol['cosecha']}
+- **Turno / línea de packing:** {arbol['turno']}
+- **Peso / Calibre:** {arbol['peso']} / {arbol['calibre']}
+- **Estado LMR en archivo:** {arbol['lmr']}
+- **Inspector responsable:** {arbol['inspector']}
+- **Coincidencias:** {len(df_traza)} registro(s)
+"""
+                    )
+                    if len(df_traza) > 1:
+                        st.dataframe(df_traza, width="stretch", hide_index=True)
 
         # MÓDULO 4
         st.markdown("---")
         st.markdown("### 🌡️ Módulo 4: Control Térmico de Cadena de Frío (Pre-frío y Contenedores)")
         col_f1, col_f2, col_f3 = st.columns(3)
         with col_f1:
-            camara_sel = st.selectbox("Cámara Frigorífica / Túnel:", ["Pre-Cámara 01", "Túnel de Enfriamiento 03", "Cámara de Almacenamiento 05", "Contenedor Reefer Puerto"])
+            camara_sel = st.selectbox(
+                "Cámara Frigorífica / Túnel:",
+                ["Pre-Cámara 01", "Túnel de Enfriamiento 03", "Cámara de Almacenamiento 05", "Contenedor Reefer Puerto"],
+            )
         with col_f2:
             temp_actual_camara = st.number_input("Temperatura Registrada (°C):", value=temp_min_limite, step=0.5)
         with col_f3:
-            st.write("###")
-            if temp_actual_camara <= temp_min_limite + 1.0:
+            frio_ok = temp_actual_camara <= temp_min_limite + 1.0
+            estado_frio = "FRÍO ÓPTIMO" if frio_ok else "RUPTURA CADENA DE FRÍO"
+            if frio_ok:
                 st.success(f"❄️ **Frío Óptimo:** En rango seguro ({temp_actual_camara}°C)")
             else:
-                st.error(f"🚨 **Ruptura de Cadena de Frío:** ¡Temperatura alta ({temp_actual_camara}°C)! Lote bloqueado automáticamente.")
+                st.error(
+                    f"🚨 **Ruptura de Cadena de Frío:** Temperatura alta ({temp_actual_camara}°C). "
+                    "Registre la lectura para dejar evidencia en auditoría."
+                )
+            if st.button("💾 Registrar lectura de frío"):
+                funciones.guardar_frio_db(
+                    camara_sel,
+                    float(temp_actual_camara),
+                    datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                    estado_frio,
+                    auditor_nombre,
+                )
+                st.success("Lectura de temperatura guardada en SQLite.")
+                st.rerun()
+
+        historial_frio = funciones.cargar_frio_db()
+        if historial_frio:
+            with st.expander("Historial de control de frío (SQLite)"):
+                st.dataframe(pd.DataFrame(historial_frio), width="stretch", hide_index=True)
 
         # MÓDULO 5
         st.markdown("---")
@@ -377,14 +506,19 @@ if archivo is not None:
         resumen_datos = f"Auditoría de Planta - Cultivo: {producto_sel} - Fecha: {datetime.date.today()} - Registros: {total_filas}"
 
         try:
-            llave_publica, sello_digital = motor_rust.firmar_reporte_ecc(resumen_datos)
-            st.success("🔒 Reporte Asegurado con Criptografía de Curva Elíptica (ECC)")
+            llave_publica, sello_digital = motor_planta.firmar_reporte_ecc(resumen_datos)
+            backend = motor_planta.motor_activo()
+            if backend == "rust":
+                st.success("🔒 Reporte asegurado con ECC P-256 (motor Rust nativo)")
+            else:
+                st.success("🔒 Reporte asegurado con ECC P-256 (motor Python / Streamlit Cloud)")
             st.code(f"Sello Digital (Firma ECC): {sello_digital}")
             st.caption(f"Llave Pública de Verificación: {llave_publica}")
+            st.caption(f"Backend criptográfico activo: `{backend}`")
         except Exception as e:
-            llave_publica = "LLAVE_PENDIENTE_RUST"
-            sello_digital = "SELLO_PENDIENTE_RUST"
-            st.warning(f"Sello criptográfico pendiente de sincronización con motor nativo: {e}")
+            llave_publica = "LLAVE_NO_DISPONIBLE"
+            sello_digital = "SELLO_NO_DISPONIBLE"
+            st.error(f"No se pudo generar el sello criptográfico: {e}")
 
         st.markdown("### 4️⃣ Observaciones de Turno, Edición y Cierre")
         col_bus1, col_bus2, col_bus3 = st.columns(3)

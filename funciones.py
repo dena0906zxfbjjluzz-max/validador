@@ -16,6 +16,118 @@ from reportlab.platypus import (
     TableStyle,
 )
 
+# Alias de columnas frecuentes en packing lists agroindustriales
+ALIAS_COLUMNAS = {
+    "id_unidad": ["CAJA", "SSCC", "PALLET", "CODIGO", "BARCODE", "EAN", "GTIN", "ID"],
+    "lote": ["LOTE"],
+    "fundo": ["FUNDO", "PARCELA", "CAMPO", "ORIGEN", "SECTOR"],
+    "productor": ["PRODUCTOR", "PROVEEDOR", "AGRICULTOR"],
+    "turno": ["TURNO", "LINEA", "PROCESO", "PACKING"],
+    "peso": ["PESO"],
+    "cosecha": ["COSECHA", "HARVEST", "FECHA_COSECHA", "F_COSECHA"],
+    "lmr": ["LMR", "RESIDUO", "ANALISIS", "FITOSANITARIO"],
+    "calibre": ["CALIBRE"],
+    "categoria": ["CATEGORIA", "CAT"],
+}
+
+
+def encontrar_columna(df, keywords):
+    """Devuelve el nombre real de la primera columna cuyo nombre contenga alguno de los keywords."""
+    for col in df.columns:
+        col_up = str(col).upper()
+        for kw in keywords:
+            if kw.upper() in col_up:
+                return col
+    return None
+
+
+def mapear_columnas_trazabilidad(df):
+    return {clave: encontrar_columna(df, aliases) for clave, aliases in ALIAS_COLUMNAS.items()}
+
+
+def _valor_celda(fila, col, default="N/D"):
+    if col is None or col not in fila.index:
+        return default
+    val = fila[col]
+    if pd.isna(val) or str(val).strip() in ("", "-"):
+        return default
+    return str(val).strip()
+
+
+def buscar_registros_por_codigo(df, codigo):
+    """Busca filas cuyo ID (caja/pallet/sscc/código) o cualquier celda coincida con el código."""
+    codigo = str(codigo).strip()
+    if not codigo or df.empty:
+        return df.iloc[0:0].copy()
+
+    cols_mapa = mapear_columnas_trazabilidad(df)
+    cols_prioridad = [
+        c for c in [
+            cols_mapa["id_unidad"],
+            cols_mapa["lote"],
+            encontrar_columna(df, ["CONTENEDOR", "BOOKING"]),
+        ] if c is not None
+    ]
+    # Evitar duplicados manteniendo orden
+    cols_busqueda = list(dict.fromkeys(cols_prioridad + list(df.columns)))
+
+    mask = pd.Series(False, index=df.index)
+    for col in cols_busqueda:
+        serie = df[col].astype(str).str.strip()
+        mask = mask | serie.str.fullmatch(codigo, case=False, na=False)
+        if mask.any():
+            break
+
+    if not mask.any():
+        # Búsqueda parcial solo en columnas de identificación
+        for col in cols_prioridad:
+            serie = df[col].astype(str).str.strip()
+            mask = mask | serie.str.contains(codigo, case=False, na=False, regex=False)
+
+    return df.loc[mask].copy()
+
+
+def armar_arbol_trazabilidad(fila, cols_mapa, inspector, codigo_buscado):
+    """Construye un diccionario legible del árbol genealógico a partir de una fila real."""
+    return {
+        "codigo": codigo_buscado,
+        "fundo": _valor_celda(fila, cols_mapa["fundo"], "No informado en archivo"),
+        "productor": _valor_celda(fila, cols_mapa["productor"], "No informado en archivo"),
+        "lote": _valor_celda(fila, cols_mapa["lote"]),
+        "turno": _valor_celda(fila, cols_mapa["turno"], "No informado en archivo"),
+        "cosecha": _valor_celda(fila, cols_mapa["cosecha"], "No informado en archivo"),
+        "peso": _valor_celda(fila, cols_mapa["peso"]),
+        "calibre": _valor_celda(fila, cols_mapa["calibre"]),
+        "lmr": _valor_celda(fila, cols_mapa["lmr"], "Sin dato LMR en archivo"),
+        "inspector": inspector,
+        "fila_indice": int(fila.name) if fila.name is not None else None,
+    }
+
+
+def interpretar_estado_lmr(texto):
+    """Clasifica un resultado LMR textual en conforme / alerta / rechazado."""
+    t = str(texto).strip().upper()
+    if not t or t in ("N/D", "-", "SIN DATO LMR EN ARCHIVO", "NAN"):
+        return "sin_dato"
+    if any(k in t for k in ["RECHAZ", "SUPERA", "FAIL", "NO CONFORME", "BLOQUE"]):
+        return "rechazado"
+    if any(k in t for k in ["ALERTA", "CERCANO", "CUARENTENA", "PENDIENTE", "WARNING"]):
+        return "alerta"
+    if any(k in t for k in ["CONFORME", "APROB", "OK", "BAJO", "PASS", "CUMPLE"]):
+        return "conforme"
+    return "sin_dato"
+
+
+def registrar_peso_ultima_fila(df, peso):
+    """Inyecta el peso capturado en la última fila de la columna PESO (si existe)."""
+    df_out = df.copy()
+    col_peso = encontrar_columna(df_out, ALIAS_COLUMNAS["peso"])
+    if col_peso is None or df_out.empty:
+        return df_out, False, col_peso
+    df_out.iloc[-1, df_out.columns.get_loc(col_peso)] = str(peso)
+    return df_out, True, col_peso
+
+
 def inicializar_base_datos():
     conn = sqlite3.connect("calidad_cerroprieto_pro.db")
     cursor = conn.cursor()
@@ -45,7 +157,8 @@ def inicializar_base_datos():
             camara TEXT,
             temperatura REAL,
             hora_registro TEXT,
-            estado TEXT
+            estado TEXT,
+            inspector TEXT
         )
     """)
     cursor.execute("""
@@ -59,6 +172,11 @@ def inicializar_base_datos():
             estado TEXT
         )
     """)
+    # Migración suave si la tabla ya existía sin columna inspector
+    try:
+        cursor.execute("ALTER TABLE control_frio ADD COLUMN inspector TEXT")
+    except sqlite3.OperationalError:
+        pass
     cursor.execute("DELETE FROM bitacora_cambios WHERE datetime(fecha_hora) < datetime('now', '-7 days')")
     conn.commit()
     conn.close()
@@ -106,6 +224,34 @@ def cargar_contenedores_db():
     df_cont = pd.read_sql_query("SELECT booking AS 'Booking', contenedor AS 'Contenedor', precinto_linea AS 'Precinto Línea', precinto_senasa AS 'Precinto SENASA', destino AS 'Destino', estado AS 'Estado' FROM contenedores_despacho", conn)
     conn.close()
     return df_cont.to_dict("records")
+
+
+def guardar_frio_db(camara, temperatura, hora_registro, estado, inspector):
+    conn = sqlite3.connect("calidad_cerroprieto_pro.db")
+    cursor = conn.cursor()
+    cursor.execute(
+        "INSERT INTO control_frio (camara, temperatura, hora_registro, estado, inspector) VALUES (?, ?, ?, ?, ?)",
+        (camara, temperatura, hora_registro, estado, inspector),
+    )
+    conn.commit()
+    conn.close()
+
+
+def cargar_frio_db(limite=50):
+    conn = sqlite3.connect("calidad_cerroprieto_pro.db")
+    df_frio = pd.read_sql_query(
+        """
+        SELECT hora_registro AS 'Fecha/Hora', camara AS 'Cámara', temperatura AS 'Temp °C',
+               estado AS 'Estado', COALESCE(inspector, '') AS 'Inspector'
+        FROM control_frio
+        ORDER BY id DESC
+        LIMIT ?
+        """,
+        conn,
+        params=(limite,),
+    )
+    conn.close()
+    return df_frio.to_dict("records")
 
 def cargar_datos_archivo(uploaded_file):
     if uploaded_file.name.endswith(".csv"):
