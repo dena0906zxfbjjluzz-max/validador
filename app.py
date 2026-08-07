@@ -10,10 +10,27 @@ import funciones
 import motor_planta
 
 st.set_page_config(
-    page_title="Sistema Integral de Exportación - Cerro Prieto",
+    page_title="Sistema Integral de Exportación",
     page_icon="📊",
     layout="wide",
 )
+
+
+def cargar_nombre_planta() -> str:
+    """Nombre genérico de la planta (secrets opcional; vacío si no se define)."""
+    try:
+        if "NOMBRE_PLANTA" in st.secrets:
+            return str(st.secrets["NOMBRE_PLANTA"]).strip()
+    except Exception:
+        pass
+    try:
+        creds = st.secrets.get("credenciales")
+        if creds is not None and "nombre_planta" in creds:
+            return str(creds["nombre_planta"]).strip()
+    except Exception:
+        pass
+    return ""
+
 
 
 def cargar_credenciales_acceso() -> tuple[str | None, str | None, str | None]:
@@ -191,9 +208,12 @@ if not st.session_state["autenticado"]:
             st.error("Usuario o contraseña incorrectos. Inténtelo de nuevo.")
     st.stop()
 
-st.title("🏭 Plataforma Corporativa de Control de Calidad, Trazabilidad, Contenedores y Planta (Perú)")
+st.title("Plataforma de control de calidad, trazabilidad, contenedores y planta")
+nombre_planta = cargar_nombre_planta()
+if nombre_planta:
+    st.caption(f"Planta: {nombre_planta}")
 st.write(
-    "Sistema integral optimizado con motor Rust nativo: GS1, Balanzas, LMR SENASA, Trazabilidad Inversa, Control de Frío y Gestión de Precintos de Contenedor."
+    "Sistema integral optimizado con motor criptográfico: GS1, balanzas, LMR SENASA, trazabilidad inversa, control de frío y gestión de precintos de contenedor."
 )
 
 funciones.inicializar_base_datos()
@@ -890,6 +910,7 @@ if archivo is not None:
                 sello_digital,
                 llave_publica,
                 mensaje_firmado=resumen_datos,
+                planta_nombre=nombre_planta,
             )
             st.download_button(
                 label="📄 Descargar PDF Ejecutivo Firmado",

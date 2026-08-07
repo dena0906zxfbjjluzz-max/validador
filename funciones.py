@@ -23,7 +23,12 @@ from reportlab.platypus import (
 
 # Base SQLite local (persiste en el servidor entre reruns; en Cloud sobrevive al sleep
 # del proceso mientras no se re-despliegue el contenedor).
-DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "calidad_cerroprieto_pro.db")
+_DB_DIR = os.path.dirname(os.path.abspath(__file__))
+_DB_CANDIDATES = [
+    os.path.join(_DB_DIR, "calidad_planta.db"),
+    os.path.join(_DB_DIR, "calidad_cerroprieto_pro.db"),  # legado
+]
+DB_PATH = next((p for p in _DB_CANDIDATES if os.path.exists(p)), _DB_CANDIDATES[0])
 
 
 def _conectar_db():
@@ -580,6 +585,7 @@ def generar_pdf_resumen(
     firma_ECDSA,
     llave_publica,
     mensaje_firmado="",
+    planta_nombre="",
 ):
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(
@@ -608,8 +614,10 @@ def generar_pdf_resumen(
     fecha_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     estado_txt = "APROBADO Y CONGELADO" if congelado_estado else "EN EDICIÓN / REVISIÓN"
     
+    sub_planta = f"<b>Planta:</b> {planta_nombre} | " if str(planta_nombre).strip() else ""
     sub = Paragraph(
-        f"<b>Planta:</b> Cerro Prieto | <b>Producto:</b> {producto} | <b>Destino:</b> {mercado}<br/><b>Estado:</b> {estado_txt} | <b>Fecha:</b> {fecha_str}",
+        f"{sub_planta}<b>Producto:</b> {producto} | <b>Destino:</b> {mercado}<br/>"
+        f"<b>Estado:</b> {estado_txt} | <b>Fecha:</b> {fecha_str}",
         styles["Normal"],
     )
     story.append(sub)
