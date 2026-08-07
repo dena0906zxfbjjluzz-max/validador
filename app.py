@@ -9,35 +9,18 @@ from openpyxl.utils import get_column_letter
 import funciones
 import motor_planta
 
+st.set_page_config(
+    page_title="Sistema Integral de Exportación - Cerro Prieto",
+    page_icon="📊",
+    layout="wide",
+)
+
 # --- CONFIGURACIÓN DE SEGURIDAD GENERAL ---
 USUARIO_CORRECTO = "calidad"
 PASSWORD_CORRECTO = "control2026"
 
 if "autenticado" not in st.session_state:
     st.session_state["autenticado"] = False
-
-if not st.session_state["autenticado"]:
-    st.title("🔒 Acceso Restringido - Control de Calidad")
-    st.write("Por favor, introduzca sus credenciales para ingresar a la plataforma corporativa.")
-    
-    usuarioInput = st.text_input("Usuario:")
-    passwordInput = st.text_input("Contraseña:", type="password")
-    
-    if st.button("Ingresar"):
-        if usuarioInput == USUARIO_CORRECTO and passwordInput == PASSWORD_CORRECTO:
-            st.session_state["autenticado"] = True
-            st.success("Acceso concedido.")
-            st.rerun()
-        else:
-            st.error("Usuario o contraseña incorrectos. Inténtelo de nuevo.")
-    st.stop()  
-# -------------------------------------------
-
-st.set_page_config(
-    page_title="Sistema Integral de Exportación - Cerro Prieto",
-    page_icon="📊",
-    layout="wide",
-)
 
 st.markdown(
     """
@@ -58,6 +41,88 @@ st.markdown(
 """,
     unsafe_allow_html=True,
 )
+
+st.sidebar.header("Navegación")
+modo_app = st.sidebar.radio(
+    "Seleccione el módulo:",
+    ["Planta / Packing (login)", "Verificación pública ECC"],
+    index=0,
+)
+
+# ---------- MÓDULO PÚBLICO: verificación de PDF firmado (sin login) ----------
+if modo_app == "Verificación pública ECC":
+    st.title("Verificación pública de sello ECC")
+    st.write(
+        "Suba el PDF ejecutivo firmado para comprobar matemáticamente si la firma "
+        "ECDSA P-256 es auténtica o si el documento fue alterado."
+    )
+
+    pdf_verif = st.file_uploader(
+        "PDF ejecutivo firmado",
+        type=["pdf"],
+        key="uploader_verificacion_ecc",
+    )
+
+    with st.expander("Verificación manual (si el PDF no se puede leer)"):
+        mensaje_manual = st.text_input("Mensaje firmado", key="msg_manual_ecc")
+        firma_manual = st.text_area("Firma hex (128 caracteres)", key="firma_manual_ecc")
+        pub_manual = st.text_area("Llave pública hex", key="pub_manual_ecc")
+        usar_manual = st.checkbox("Usar datos manuales en lugar del PDF", key="usar_manual_ecc")
+
+    if st.button("Verificar autenticidad ECC", type="primary"):
+        try:
+            if usar_manual:
+                datos = {
+                    "mensaje": mensaje_manual,
+                    "firma": firma_manual,
+                    "llave_publica": pub_manual,
+                }
+            elif pdf_verif is not None:
+                datos = funciones.extraer_sello_ecc_pdf(pdf_verif.getvalue())
+            else:
+                st.error("Suba un PDF o active la verificación manual.")
+                st.stop()
+
+            resultado = motor_planta.auditar_sello_pdf(datos)
+
+            st.markdown("#### Resultado de la auditoría criptográfica")
+            if resultado["ok"] and resultado["estado"] == "AUTENTICO":
+                st.success(resultado["detalle"])
+            elif resultado["ok"]:
+                st.warning(resultado["detalle"])
+            else:
+                st.error(resultado["detalle"])
+
+            st.caption(f"Estado: `{resultado['estado']}`")
+            st.code(f"Mensaje: {resultado['mensaje']}")
+            st.code(f"Firma: {resultado['firma']}")
+            st.code(f"Llave pública: {resultado['llave_publica']}")
+
+            oficial = motor_planta.llave_publica_oficial_hex()
+            if oficial:
+                st.caption(f"Llave pública oficial de planta (derivada de secrets): `{oficial}`")
+        except Exception as e:
+            st.error(f"No se pudo verificar el PDF: {e}")
+
+    st.stop()
+
+# ---------- ACCESO PLANTA ----------
+if not st.session_state["autenticado"]:
+    st.title("Acceso restringido - Control de Calidad")
+    st.write("Introduzca sus credenciales para ingresar a la plataforma corporativa.")
+    st.info("¿Solo necesita validar un PDF? Use en la barra lateral: **Verificación pública ECC**.")
+
+    usuarioInput = st.text_input("Usuario:")
+    passwordInput = st.text_input("Contraseña:", type="password")
+
+    if st.button("Ingresar"):
+        if usuarioInput == USUARIO_CORRECTO and passwordInput == PASSWORD_CORRECTO:
+            st.session_state["autenticado"] = True
+            st.success("Acceso concedido.")
+            st.rerun()
+        else:
+            st.error("Usuario o contraseña incorrectos. Inténtelo de nuevo.")
+    st.stop()
 
 st.title("🏭 Plataforma Corporativa de Control de Calidad, Trazabilidad, Contenedores y Planta (Perú)")
 st.write(
@@ -691,6 +756,7 @@ if archivo is not None:
                 capa_texto,
                 sello_digital,
                 llave_publica,
+                mensaje_firmado=resumen_datos,
             )
             st.download_button(
                 label="📄 Descargar PDF Ejecutivo Firmado",

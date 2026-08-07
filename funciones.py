@@ -266,6 +266,46 @@ def resaltar_errores_celdas(val):
         return "background-color: #ffcccc; color: #990000; font-weight: bold;"
     return ""
 
+def extraer_sello_ecc_pdf(pdf_bytes) -> dict:
+    """
+    Extrae mensaje firmado, firma y llave pública desde un PDF ejecutivo.
+    Busca marcadores [ECC_*] y también etiquetas legibles Firma:/Llave Pública:.
+    """
+    import re
+    from pypdf import PdfReader
+
+    reader = PdfReader(io.BytesIO(pdf_bytes))
+    texto = "\n".join((page.extract_text() or "") for page in reader.pages)
+
+    def _marker(tag):
+        m = re.search(rf"\[{tag}\](.*?)\[/{tag}\]", texto, flags=re.IGNORECASE | re.DOTALL)
+        return m.group(1).strip() if m else ""
+
+    mensaje = _marker("ECC_MSG")
+    firma = _marker("ECC_SIG")
+    publica = _marker("ECC_PUB")
+
+    if not mensaje:
+        m = re.search(r"Mensaje firmado:\s*(.+)", texto, flags=re.IGNORECASE)
+        if m:
+            mensaje = m.group(1).strip()
+    if not firma:
+        m = re.search(r"Firma:\s*([0-9a-fA-F]+)", texto)
+        if m:
+            firma = m.group(1).strip()
+    if not publica:
+        m = re.search(r"Llave P[uú]blica:\s*([0-9a-fA-F]+)", texto, flags=re.IGNORECASE)
+        if m:
+            publica = m.group(1).strip()
+
+    return {
+        "mensaje": mensaje,
+        "firma": "".join(firma.split()),
+        "llave_publica": "".join(publica.split()),
+        "texto_extraido": texto,
+    }
+
+
 def generar_pdf_resumen(
     archivo_nombre,
     total_filas,
@@ -279,6 +319,7 @@ def generar_pdf_resumen(
     capa_texto,
     firma_ECDSA,
     llave_publica,
+    mensaje_firmado="",
 ):
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(
@@ -344,11 +385,26 @@ def generar_pdf_resumen(
         story.append(capa_p)
         story.append(Spacer(1, 10))
 
+    mensaje_ref = mensaje_firmado or (
+        f"Auditoría de Planta - Cultivo: {producto} - Fecha: {fecha_str[:10]} - Registros: {total_filas}"
+    )
+    # Marcadores machine-readable para verificación pública posterior
+    bloque_verificacion = (
+        f"[ECC_MSG]{mensaje_ref}[/ECC_MSG] "
+        f"[ECC_SIG]{firma_ECDSA}[/ECC_SIG] "
+        f"[ECC_PUB]{llave_publica}[/ECC_PUB]"
+    )
     sello_data = [
         [Paragraph("<b>Sello Criptográfico de Curva Elíptica (ECC / P-256):</b>", styles["Normal"])],
+        [Paragraph(f"<font size=7 face='Courier'><b>Mensaje firmado:</b> {mensaje_ref}</font>", styles["Normal"])],
         [Paragraph(f"<font size=7 face='Courier'><b>Firma:</b> {firma_ECDSA}</font>", styles["Normal"])],
         [Paragraph(f"<font size=7 face='Courier'><b>Llave Pública:</b> {llave_publica}</font>", styles["Normal"])],
-        [Paragraph("<i>Este documento cuenta con un blindaje criptográfico de curva elíptica procesado por motor Rust nativo, garantizando inmutabilidad.</i>", styles["Normal"])]
+        [Paragraph(f"<font size=5 face='Courier'>{bloque_verificacion}</font>", styles["Normal"])],
+        [Paragraph(
+            "<i>Verifique este PDF en la pestaña pública de la plataforma. "
+            "Si el contenido firmado fue alterado, la verificación ECC fallará.</i>",
+            styles["Normal"],
+        )],
     ]
     
     tabla_sello = Table(sello_data, colWidths=[500])

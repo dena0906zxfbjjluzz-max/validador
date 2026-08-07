@@ -43,6 +43,11 @@ LLAVE_PRIVADA = "3d3c988092632e2e4ecfbf60989822344ef0168166f6ea84282441a780b1f3c
 
 Tras cambiar Secrets o el código: **Reboot** de la app. La UI muestra un diagnóstico si el secret no se encuentra.
 
+### 🔎 Verificación pública de PDF
+En la barra lateral: **Verificación pública ECC** (sin login). Un tercero sube el PDF ejecutivo y la app comprueba la firma ECDSA P-256:
+- **AUTÉNTICO:** firma válida + llave oficial de planta
+- **ALTERADO:** la firma no corresponde al mensaje (documento manipulado)
+
 ### 💼 Interoperabilidad Universal ERP (SAP / Oracle)
 El sistema incluye un algoritmo de limpieza y auditoría que corrige caracteres corruptos, elimina espacios invisibles y parcha celdas vacías de forma masiva en milisegundos. Permite la exportación directa en formato plano universal **(CSV Puro)** optimizado para la inyección masiva de datos limpios directamente en los módulos logísticos de ERPs corporativos sin bloqueos de formato.
 

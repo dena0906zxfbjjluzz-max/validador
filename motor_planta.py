@@ -211,6 +211,103 @@ def _firmar_con_cryptography(datos_reporte: str, private_key) -> tuple[str, str]
     return pub_hex, firma_hex
 
 
+def llave_publica_oficial_hex() -> str | None:
+    """Deriva la llave pública oficial desde st.secrets['LLAVE_PRIVADA'] (sin exponer la privada)."""
+    from cryptography.hazmat.primitives import serialization
+
+    secreta = leer_llave_privada_secrets()
+    if not secreta:
+        return None
+    private_key = _cargar_llave_privada(secreta)
+    return private_key.public_key().public_bytes(
+        encoding=serialization.Encoding.X962,
+        format=serialization.PublicFormat.UncompressedPoint,
+    ).hex()
+
+
+def verificar_firma_ecc(
+    mensaje: str,
+    firma_hex: str,
+    llave_publica_hex: str,
+) -> tuple[bool, str]:
+    """
+    Verifica matemáticamente una firma ECDSA P-256 (SHA-256).
+    Devuelve (ok, detalle).
+    """
+    from cryptography.exceptions import InvalidSignature
+    from cryptography.hazmat.primitives import hashes
+    from cryptography.hazmat.primitives.asymmetric import ec
+    from cryptography.hazmat.primitives.asymmetric.utils import encode_dss_signature
+
+    try:
+        pub_limpia = "".join(str(llave_publica_hex).split()).lower().removeprefix("0x")
+        firma_limpia = "".join(str(firma_hex).split()).lower().removeprefix("0x")
+        if len(firma_limpia) != 128:
+            return False, f"Firma inválida: se esperan 128 hex (r||s), hay {len(firma_limpia)}"
+        if len(pub_limpia) not in (128, 130):
+            # 130 = 65 bytes uncompressed (04||X||Y); 128 = rare raw X||Y
+            return False, f"Llave pública inválida: longitud hex={len(pub_limpia)}"
+
+        pub_bytes = bytes.fromhex(pub_limpia)
+        if len(pub_bytes) == 64:
+            pub_bytes = b"\x04" + pub_bytes
+
+        public_key = ec.EllipticCurvePublicKey.from_encoded_point(ec.SECP256R1(), pub_bytes)
+        r = int(firma_limpia[:64], 16)
+        s = int(firma_limpia[64:], 16)
+        firma_der = encode_dss_signature(r, s)
+        public_key.verify(
+            firma_der,
+            mensaje.encode("utf-8"),
+            ec.ECDSA(hashes.SHA256()),
+        )
+    except InvalidSignature:
+        return False, "Firma NO válida: el PDF fue alterado o no corresponde al mensaje firmado"
+    except Exception as e:
+        return False, f"Error al verificar: {e}"
+
+    oficial = llave_publica_oficial_hex()
+    if oficial:
+        pub_norm = pub_limpia.lower()
+        of_norm = oficial.lower()
+        mismas = pub_norm == of_norm or pub_norm == of_norm[2:] or f"04{pub_norm}" == of_norm
+        if mismas:
+            return True, "AUTÉNTICO: firma ECC válida y emitida con la llave oficial de planta"
+        return True, (
+            "Firma ECC matemáticamente válida, pero la llave pública NO coincide "
+            "con la llave oficial de planta (posible emisor no autorizado)"
+        )
+
+    return True, "Firma ECC matemáticamente válida (no hay llave oficial en secrets para contrastar emisor)"
+
+
+def auditar_sello_pdf(datos_sello: dict) -> dict:
+    """Evalúa un sello extraído de PDF y devuelve un resultado estructurado."""
+    mensaje = (datos_sello.get("mensaje") or "").strip()
+    firma = (datos_sello.get("firma") or "").strip()
+    publica = (datos_sello.get("llave_publica") or "").strip()
+
+    if not mensaje or not firma or not publica:
+        return {
+            "ok": False,
+            "estado": "INCOMPLETO",
+            "detalle": "El PDF no contiene mensaje, firma y llave pública ECC parseables",
+            "mensaje": mensaje,
+            "firma": firma,
+            "llave_publica": publica,
+        }
+
+    ok, detalle = verificar_firma_ecc(mensaje, firma, publica)
+    return {
+        "ok": ok,
+        "estado": "AUTENTICO" if ok and "AUTÉNTICO" in detalle else ("VALIDO_DESCONOCIDO" if ok else "ALTERADO"),
+        "detalle": detalle,
+        "mensaje": mensaje,
+        "firma": firma,
+        "llave_publica": publica,
+    }
+
+
 def firmar_reporte_ecc(
     datos_reporte: str,
     llave_privada: str | None = None,
