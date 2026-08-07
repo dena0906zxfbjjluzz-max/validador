@@ -509,20 +509,25 @@ if archivo is not None:
             llave_publica, sello_digital = motor_planta.firmar_reporte_ecc(resumen_datos)
             modo = motor_planta.modo_firma_activo()
             backend = motor_planta.motor_activo()
-            if modo == "real":
-                st.success("🔒 Sello real ECC P-256 con `st.secrets['LLAVE_PRIVADA']`")
+            if modo == "real" and backend == "rust":
+                st.success("🔒 Sello real ECC P-256 · `st.secrets['LLAVE_PRIVADA']` + motor Rust")
+            elif modo == "real":
+                st.success("🔒 Sello real ECC P-256 · `st.secrets['LLAVE_PRIVADA']` (respaldo Python)")
+                st.info("Rust no quedó activo en este entorno; la firma sí usa su llave secreta.")
             else:
                 st.warning(
-                    "🧪 Modo demo: no hay `LLAVE_PRIVADA` en secrets. "
-                    "Se firmó con llave efímera. Configure el secret para el módulo real."
+                    "🧪 Modo demo: no se pudo usar `st.secrets['LLAVE_PRIVADA']`. "
+                    "Se firmó con llave efímera."
                 )
             st.code(f"Sello Digital (Firma ECC): {sello_digital}")
             st.caption(f"Llave Pública de Verificación: {llave_publica}")
             st.caption(f"Modo de firma: `{modo}` · Backend: `{backend}`")
+            st.caption(f"Diagnóstico: {motor_planta.diagnostico()}")
         except Exception as e:
             llave_publica = "LLAVE_NO_DISPONIBLE"
             sello_digital = "SELLO_NO_DISPONIBLE"
             st.error(f"No se pudo generar el sello criptográfico: {e}")
+            st.caption(f"Diagnóstico: {motor_planta.diagnostico()}")
 
         st.markdown("### 4️⃣ Observaciones de Turno, Edición y Cierre")
         col_bus1, col_bus2, col_bus3 = st.columns(3)

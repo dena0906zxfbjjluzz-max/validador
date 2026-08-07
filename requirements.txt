@@ -3,3 +3,5 @@ pandas
 openpyxl
 reportlab
 cryptography
+maturin
+./motor_rust

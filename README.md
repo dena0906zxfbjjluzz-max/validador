@@ -32,13 +32,16 @@ La plataforma cuenta con una arquitectura híbrida de alto rendimiento que combi
 ### ⚡ Motor Criptográfico ECC P-256 (real + demo)
 Cada cierre oficial de lote se sella con **ECDSA sobre curva P-256**, generando **firma digital** y **llave pública** en hexadecimal.
 
-* **Modo real:** firma con la llave fija `st.secrets["LLAVE_PRIVADA"]` (hex de 64 caracteres o PEM). En Streamlit Cloud: *Settings → Secrets*.
-* **Modo demo:** si no hay secret, usa una llave efímera (Rust nativo o `cryptography`) para no romper la demo.
-* Plantilla: `.streamlit/secrets.toml.example`
+* **Modo real + Rust:** lee exactamente `st.secrets["LLAVE_PRIVADA"]` y firma con `motor_rust` (compilación vía Maturin en Cloud).
+* **Respaldo:** si Rust no carga, firma igual con esa llave usando `cryptography`.
+* **Modo demo:** sin secret → llave efímera.
+* En Cloud, Secrets debe quedar así (con comillas):
 
 ```toml
-LLAVE_PRIVADA = "tu_hex_de_64_caracteres"
+LLAVE_PRIVADA = "3d3c988092632e2e4ecfbf60989822344ef0168166f6ea84282441a780b1f3c0"
 ```
+
+Tras cambiar Secrets o el código: **Reboot** de la app. La UI muestra un diagnóstico si el secret no se encuentra.
 
 ### 💼 Interoperabilidad Universal ERP (SAP / Oracle)
 El sistema incluye un algoritmo de limpieza y auditoría que corrige caracteres corruptos, elimina espacios invisibles y parcha celdas vacías de forma masiva en milisegundos. Permite la exportación directa en formato plano universal **(CSV Puro)** optimizado para la inyección masiva de datos limpios directamente en los módulos logísticos de ERPs corporativos sin bloqueos de formato.
