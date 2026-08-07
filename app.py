@@ -803,14 +803,26 @@ if archivo is not None:
             else:
                 df_editado = df_editado_pag
 
-            if not df_mostrar.equals(df_editado):
-                for i in range(len(df_mostrar)):
-                    for col in df_mostrar.columns:
-                        val_orig = df_mostrar.iloc[i][col]
-                        val_nuevo = df_editado.iloc[i][col]
-                        if val_orig != val_nuevo:
-                            fecha_hora_cambio = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                            funciones.guardar_cambio_db(fecha_hora_cambio, i, col, val_orig, val_nuevo, auditor_nombre)
+            def _valores_iguales(valor_original, valor_nuevo):
+                if pd.isna(valor_original) and pd.isna(valor_nuevo):
+                    return True
+                return str(valor_original).strip() == str(valor_nuevo).strip()
+
+            for i in range(len(df_mostrar)):
+                fila_indice = df_mostrar.index[i]
+                for col in df_mostrar.columns:
+                    val_orig = df_mostrar.iloc[i][col]
+                    val_nuevo = df_editado.iloc[i][col]
+                    if not _valores_iguales(val_orig, val_nuevo):
+                        fecha_hora_cambio = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                        funciones.guardar_cambio_db(
+                            fecha_hora_cambio,
+                            int(fila_indice) if isinstance(fila_indice, (int, float)) and not pd.isna(fila_indice) else i,
+                            col,
+                            val_orig,
+                            val_nuevo,
+                            auditor_nombre,
+                        )
 
         st.markdown("#### ✅ Verificaciones Fitosanitarias Obligatorias")
         chk_pulpa = st.checkbox("Se verificó la temperatura de pulpa y los límites máximos de residuos (LMR).")
