@@ -48,6 +48,13 @@ En la barra lateral: **Verificación pública ECC** (sin login). Un tercero sube
 - **AUTÉNTICO:** firma válida + llave oficial de planta
 - **ALTERADO:** la firma no corresponde al mensaje (documento manipulado)
 
+### 📂 Historial permanente de reportes (SQLite)
+Cada sello ECC exitoso se archiva automáticamente en la tabla `historial_reportes`:
+- **Fecha**, **lote**, **hash SHA-256**, **responsable**
+- Idempotente por hash (no duplica el mismo sello)
+- Visible en planta (sección 6) y consultable por hash en verificación pública
+- Opcional: si configura `SUPABASE_URL` + `SUPABASE_KEY` en Secrets, se replica por REST para no perder datos al re-desplegar Cloud
+
 ### 💼 Interoperabilidad Universal ERP (SAP / Oracle)
 El sistema incluye un algoritmo de limpieza y auditoría que corrige caracteres corruptos, elimina espacios invisibles y parcha celdas vacías de forma masiva en milisegundos. Permite la exportación directa en formato plano universal **(CSV Puro)** optimizado para la inyección masiva de datos limpios directamente en los módulos logísticos de ERPs corporativos sin bloqueos de formato.
 

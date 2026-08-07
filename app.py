@@ -101,8 +101,49 @@ if modo_app == "Verificación pública ECC":
             oficial = motor_planta.llave_publica_oficial_hex()
             if oficial:
                 st.caption(f"Llave pública oficial de planta (derivada de secrets): `{oficial}`")
+
+            # Cruce con registro histórico permanente (si el sello ya fue archivado)
+            try:
+                hash_pdf = funciones.calcular_hash_reporte(
+                    resultado["mensaje"], resultado["firma"], resultado["llave_publica"]
+                )
+                st.caption(f"Hash del sello (SHA-256): `{hash_pdf}`")
+                hist = funciones.buscar_reporte_por_hash(hash_pdf)
+                if hist:
+                    st.success(
+                        f"Registro histórico encontrado · Fecha: {hist['fecha_hora']} · "
+                        f"Lote: {hist['lote']} · Responsable: {hist['responsable']}"
+                    )
+                else:
+                    st.info(
+                        "No hay entrada en el historial SQLite para este hash "
+                        "(puede ser un PDF anterior al registro histórico, o se generó en otra instancia)."
+                    )
+            except Exception:
+                pass
         except Exception as e:
             st.error(f"No se pudo verificar el PDF: {e}")
+
+    st.markdown("---")
+    st.subheader("Consulta de historial por hash")
+    hash_busqueda = st.text_input("Pegue el hash SHA-256 del reporte", key="hash_hist_public")
+    if st.button("Buscar en historial", key="btn_hash_hist_public"):
+        if not hash_busqueda.strip():
+            st.warning("Ingrese un hash.")
+        else:
+            hist = funciones.buscar_reporte_por_hash(hash_busqueda.strip())
+            if hist:
+                st.success("Registro encontrado en historial permanente")
+                st.json({
+                    "fecha": hist["fecha_hora"],
+                    "lote": hist["lote"],
+                    "hash": hist["hash_sha256"],
+                    "responsable": hist["responsable"],
+                    "archivo": hist["archivo"],
+                    "producto": hist["producto"],
+                })
+            else:
+                st.error("Hash no encontrado en el historial de reportes.")
 
     st.stop()
 
@@ -571,9 +612,28 @@ if archivo is not None:
         resumen_datos = f"Auditoría de Planta - Cultivo: {producto_sel} - Fecha: {datetime.date.today()} - Registros: {total_filas}"
 
         try:
-            llave_publica, sello_digital = motor_planta.firmar_reporte_ecc(resumen_datos)
-            modo = motor_planta.modo_firma_activo()
-            backend = motor_planta.motor_activo()
+            # Reutilizar el mismo sello en reruns de Streamlit (ECDSA no es determinista)
+            cache_sello = st.session_state.get("cache_sello_ecc")
+            if (
+                not cache_sello
+                or cache_sello.get("mensaje") != resumen_datos
+                or cache_sello.get("archivo") != archivo.name
+            ):
+                llave_publica, sello_digital = motor_planta.firmar_reporte_ecc(resumen_datos)
+                st.session_state["cache_sello_ecc"] = {
+                    "mensaje": resumen_datos,
+                    "archivo": archivo.name,
+                    "llave_publica": llave_publica,
+                    "sello_digital": sello_digital,
+                    "modo": motor_planta.modo_firma_activo(),
+                    "backend": motor_planta.motor_activo(),
+                }
+            else:
+                llave_publica = cache_sello["llave_publica"]
+                sello_digital = cache_sello["sello_digital"]
+
+            modo = st.session_state["cache_sello_ecc"].get("modo") or motor_planta.modo_firma_activo()
+            backend = st.session_state["cache_sello_ecc"].get("backend") or motor_planta.motor_activo()
             if modo == "real" and backend == "rust":
                 st.success("🔒 Sello real ECC P-256 · `st.secrets['LLAVE_PRIVADA']` + motor Rust")
             elif modo == "real":
@@ -588,6 +648,53 @@ if archivo is not None:
             st.caption(f"Llave Pública de Verificación: {llave_publica}")
             st.caption(f"Modo de firma: `{modo}` · Backend: `{backend}`")
             st.caption(f"Diagnóstico: {motor_planta.diagnostico()}")
+
+            # Lote(s) detectados en el archivo
+            if cols_traza.get("lote"):
+                lotes_vals = [
+                    v for v in df_original[cols_traza["lote"]].astype(str).str.strip().unique()
+                    if v and v.lower() != "nan"
+                ]
+                if not lotes_vals:
+                    lote_reporte = "SIN-LOTE"
+                elif len(lotes_vals) <= 3:
+                    lote_reporte = ", ".join(lotes_vals)
+                else:
+                    lote_reporte = f"{lotes_vals[0]} … (+{len(lotes_vals) - 1} lotes)"
+            else:
+                lote_reporte = archivo.name
+
+            hash_reporte = funciones.calcular_hash_reporte(
+                resumen_datos, sello_digital, llave_publica
+            )
+            resultado_hist = funciones.guardar_reporte_historico(
+                fecha_hora=datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                lote=lote_reporte,
+                hash_sha256=hash_reporte,
+                responsable=auditor_nombre,
+                archivo=archivo.name,
+                producto=producto_sel,
+                registros=total_filas,
+                firma_ecc=sello_digital,
+                llave_publica=llave_publica,
+                mensaje=resumen_datos,
+                modo_firma=modo,
+                backend=backend,
+            )
+            st.session_state["ultimo_hash_reporte"] = hash_reporte
+            if resultado_hist.get("guardado"):
+                st.info(
+                    f"📂 Historial permanente: reporte archivado (id `{resultado_hist['id']}`) · "
+                    f"Hash `{hash_reporte[:16]}…`"
+                )
+                if resultado_hist.get("supabase") == "ok":
+                    st.caption("Réplica en Supabase: OK")
+                elif resultado_hist.get("supabase"):
+                    st.caption(f"Supabase (opcional): {resultado_hist['supabase']}")
+            elif resultado_hist.get("ya_existia"):
+                st.caption(
+                    f"📂 Historial: este sello ya estaba registrado (hash `{hash_reporte[:16]}…`)"
+                )
         except Exception as e:
             llave_publica = "LLAVE_NO_DISPONIBLE"
             sello_digital = "SELLO_NO_DISPONIBLE"
@@ -774,6 +881,19 @@ if archivo is not None:
                 file_name="Packing_List_Oficial.csv",
                 mime="text/csv",
             )
+
+        st.markdown("### 6️⃣ Historial permanente de reportes firmados (SQLite)")
+        st.caption(
+            "Cada sello ECC exitoso se archiva con fecha, lote, hash SHA-256 y responsable. "
+            "Persiste en el servidor entre sleeps de la app; opcionalmente se replica a Supabase si configura secrets."
+        )
+        historial_reportes = funciones.cargar_historial_reportes_db(200)
+        if historial_reportes:
+            st.dataframe(pd.DataFrame(historial_reportes), width="stretch", hide_index=True)
+            if st.session_state.get("ultimo_hash_reporte"):
+                st.caption(f"Último hash de esta sesión: `{st.session_state['ultimo_hash_reporte']}`")
+        else:
+            st.info("Aún no hay reportes archivados. Genere un sello ECC para crear el primer registro.")
 
     except Exception as e:
         st.error(f"Ocurrió un error al procesar el archivo: {e}")

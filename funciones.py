@@ -1,6 +1,11 @@
 import io
+import os
+import hashlib
 import datetime
 import sqlite3
+import json
+import urllib.error
+import urllib.request
 import pandas as pd
 from openpyxl.styles import PatternFill
 from openpyxl.utils import get_column_letter
@@ -15,6 +20,20 @@ from reportlab.platypus import (
     Table,
     TableStyle,
 )
+
+# Base SQLite local (persiste en el servidor entre reruns; en Cloud sobrevive al sleep
+# del proceso mientras no se re-despliegue el contenedor).
+DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "calidad_cerroprieto_pro.db")
+
+
+def _conectar_db():
+    return sqlite3.connect(DB_PATH, check_same_thread=False)
+
+
+def calcular_hash_reporte(mensaje: str, firma: str, llave_publica: str = "") -> str:
+    """Huella SHA-256 del sello ECC (mensaje + firma + llave pública)."""
+    payload = f"{mensaje}|{firma}|{llave_publica}".encode("utf-8")
+    return hashlib.sha256(payload).hexdigest()
 
 # Alias de columnas frecuentes en packing lists agroindustriales
 ALIAS_COLUMNAS = {
@@ -129,7 +148,7 @@ def registrar_peso_ultima_fila(df, peso):
 
 
 def inicializar_base_datos():
-    conn = sqlite3.connect("calidad_cerroprieto_pro.db")
+    conn = _conectar_db()
     cursor = conn.cursor()
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS historial_sesion (
@@ -172,6 +191,27 @@ def inicializar_base_datos():
             estado TEXT
         )
     """)
+    # Registro histórico permanente de reportes ECC exitosos
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS historial_reportes (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            fecha_hora TEXT NOT NULL,
+            lote TEXT NOT NULL,
+            hash_sha256 TEXT NOT NULL UNIQUE,
+            responsable TEXT NOT NULL,
+            archivo TEXT,
+            producto TEXT,
+            registros INTEGER,
+            firma_ecc TEXT,
+            llave_publica TEXT,
+            mensaje TEXT,
+            modo_firma TEXT,
+            backend TEXT
+        )
+    """)
+    cursor.execute(
+        "CREATE INDEX IF NOT EXISTS idx_historial_reportes_fecha ON historial_reportes(fecha_hora DESC)"
+    )
     # Migración suave si la tabla ya existía sin columna inspector
     try:
         cursor.execute("ALTER TABLE control_frio ADD COLUMN inspector TEXT")
@@ -181,8 +221,228 @@ def inicializar_base_datos():
     conn.commit()
     conn.close()
 
+
+def _supabase_config():
+    """Lee URL y clave de Supabase desde st.secrets si existen (opcional)."""
+    try:
+        import streamlit as st
+
+        url = None
+        key = None
+        # Raíz
+        try:
+            url = st.secrets.get("SUPABASE_URL") or st.secrets.get("supabase_url")
+            key = (
+                st.secrets.get("SUPABASE_KEY")
+                or st.secrets.get("SUPABASE_SERVICE_KEY")
+                or st.secrets.get("supabase_key")
+            )
+        except Exception:
+            pass
+        # Sección [supabase]
+        try:
+            bloque = st.secrets.get("supabase")
+            if bloque is not None:
+                url = url or bloque.get("url") or bloque.get("URL")
+                key = key or bloque.get("key") or bloque.get("KEY") or bloque.get("service_key")
+        except Exception:
+            pass
+        if url and key:
+            return str(url).rstrip("/"), str(key)
+    except Exception:
+        pass
+    return None, None
+
+
+def _replicar_reporte_supabase(registro: dict) -> str | None:
+    """
+    Réplica opcional en Supabase (REST) para no perder historial si Cloud se re-despliega.
+    Tabla esperada: historial_reportes (mismos campos). Retorna None si OK o mensaje de error.
+    """
+    url, key = _supabase_config()
+    if not url or not key:
+        return None
+
+    endpoint = f"{url}/rest/v1/historial_reportes"
+    body = json.dumps(registro).encode("utf-8")
+    req = urllib.request.Request(
+        endpoint,
+        data=body,
+        method="POST",
+        headers={
+            "apikey": key,
+            "Authorization": f"Bearer {key}",
+            "Content-Type": "application/json",
+            "Prefer": "resolution=ignore-duplicates,return=minimal",
+        },
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=8) as resp:
+            if resp.status in (200, 201, 204):
+                return "ok"
+            return f"status {resp.status}"
+    except urllib.error.HTTPError as e:
+        try:
+            detalle = e.read().decode("utf-8", errors="replace")[:200]
+        except Exception:
+            detalle = str(e)
+        return f"HTTP {e.code}: {detalle}"
+    except Exception as e:
+        return str(e)
+
+
+def guardar_reporte_historico(
+    fecha_hora: str,
+    lote: str,
+    hash_sha256: str,
+    responsable: str,
+    archivo: str = "",
+    producto: str = "",
+    registros: int = 0,
+    firma_ecc: str = "",
+    llave_publica: str = "",
+    mensaje: str = "",
+    modo_firma: str = "",
+    backend: str = "",
+) -> dict:
+    """
+    Inserta un reporte exitoso en SQLite (idempotente por hash) y, si hay secrets,
+    intenta réplica en Supabase. Devuelve {guardado, id, hash, supabase}.
+    """
+    inicializar_base_datos()
+    conn = _conectar_db()
+    cursor = conn.cursor()
+    cursor.execute("SELECT id FROM historial_reportes WHERE hash_sha256 = ?", (hash_sha256,))
+    existente = cursor.fetchone()
+    if existente:
+        conn.close()
+        return {
+            "guardado": False,
+            "ya_existia": True,
+            "id": existente[0],
+            "hash": hash_sha256,
+            "supabase": None,
+        }
+
+    cursor.execute(
+        """
+        INSERT INTO historial_reportes (
+            fecha_hora, lote, hash_sha256, responsable, archivo, producto,
+            registros, firma_ecc, llave_publica, mensaje, modo_firma, backend
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            fecha_hora,
+            lote or "N/D",
+            hash_sha256,
+            responsable or "N/D",
+            archivo,
+            producto,
+            int(registros or 0),
+            firma_ecc,
+            llave_publica,
+            mensaje,
+            modo_firma,
+            backend,
+        ),
+    )
+    new_id = cursor.lastrowid
+    conn.commit()
+    conn.close()
+
+    registro_remoto = {
+        "fecha_hora": fecha_hora,
+        "lote": lote or "N/D",
+        "hash_sha256": hash_sha256,
+        "responsable": responsable or "N/D",
+        "archivo": archivo,
+        "producto": producto,
+        "registros": int(registros or 0),
+        "firma_ecc": firma_ecc,
+        "llave_publica": llave_publica,
+        "mensaje": mensaje,
+        "modo_firma": modo_firma,
+        "backend": backend,
+    }
+    sb = _replicar_reporte_supabase(registro_remoto)
+    return {
+        "guardado": True,
+        "ya_existia": False,
+        "id": new_id,
+        "hash": hash_sha256,
+        "supabase": sb,
+    }
+
+
+def cargar_historial_reportes_db(limite: int = 200) -> list:
+    inicializar_base_datos()
+    conn = _conectar_db()
+    df = pd.read_sql_query(
+        """
+        SELECT
+            fecha_hora AS 'Fecha',
+            lote AS 'Lote',
+            hash_sha256 AS 'Hash',
+            responsable AS 'Responsable',
+            archivo AS 'Archivo',
+            producto AS 'Producto',
+            registros AS 'Registros',
+            modo_firma AS 'Modo',
+            backend AS 'Backend'
+        FROM historial_reportes
+        ORDER BY id DESC
+        LIMIT ?
+        """,
+        conn,
+        params=(int(limite),),
+    )
+    conn.close()
+    return df.to_dict("records")
+
+
+def buscar_reporte_por_hash(hash_sha256: str) -> dict | None:
+    inicializar_base_datos()
+    conn = _conectar_db()
+    cursor = conn.cursor()
+    cursor.execute(
+        """
+        SELECT fecha_hora, lote, hash_sha256, responsable, archivo, producto,
+               registros, firma_ecc, llave_publica, mensaje, modo_firma, backend
+        FROM historial_reportes
+        WHERE hash_sha256 = ?
+        LIMIT 1
+        """,
+        (hash_sha256.strip().lower(),),
+    )
+    row = cursor.fetchone()
+    conn.close()
+    if not row:
+        # también buscar sin forzar lower en caso de mayúsculas mixtas
+        conn = _conectar_db()
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            SELECT fecha_hora, lote, hash_sha256, responsable, archivo, producto,
+                   registros, firma_ecc, llave_publica, mensaje, modo_firma, backend
+            FROM historial_reportes
+            WHERE lower(hash_sha256) = lower(?)
+            LIMIT 1
+            """,
+            (hash_sha256.strip(),),
+        )
+        row = cursor.fetchone()
+        conn.close()
+    if not row:
+        return None
+    keys = [
+        "fecha_hora", "lote", "hash_sha256", "responsable", "archivo", "producto",
+        "registros", "firma_ecc", "llave_publica", "mensaje", "modo_firma", "backend",
+    ]
+    return dict(zip(keys, row))
+
+
 def guardar_historial_db(hora, archivo, registros, confiabilidad):
-    conn = sqlite3.connect("calidad_cerroprieto_pro.db")
+    conn = _conectar_db()
     cursor = conn.cursor()
     cursor.execute("SELECT id FROM historial_sesion WHERE archivo = ?", (archivo,))
     if not cursor.fetchone():
@@ -192,13 +452,13 @@ def guardar_historial_db(hora, archivo, registros, confiabilidad):
     conn.close()
 
 def cargar_historial_db():
-    conn = sqlite3.connect("calidad_cerroprieto_pro.db")
+    conn = _conectar_db()
     df_db = pd.read_sql_query("SELECT hora AS Hora, archivo AS Archivo, registros AS Registros, confiabilidad AS Confiabilidad FROM historial_sesion", conn)
     conn.close()
     return df_db.to_dict("records")
 
 def guardar_cambio_db(fecha_hora, fila_indice, columna, valor_anterior, nuevo_valor, inspector):
-    conn = sqlite3.connect("calidad_cerroprieto_pro.db")
+    conn = _conectar_db()
     cursor = conn.cursor()
     cursor.execute("INSERT INTO bitacora_cambios (fecha_hora, fila_indice, columna, valor_anterior, nuevo_valor, inspector) VALUES (?, ?, ?, ?, ?, ?)",
                    (fecha_hora, fila_indice, columna, valor_anterior, nuevo_valor, inspector))
@@ -206,13 +466,13 @@ def guardar_cambio_db(fecha_hora, fila_indice, columna, valor_anterior, nuevo_va
     conn.close()
 
 def cargar_bitacora_db():
-    conn = sqlite3.connect("calidad_cerroprieto_pro.db")
+    conn = _conectar_db()
     df_bit = pd.read_sql_query("SELECT fecha_hora AS 'Fecha/Hora', fila_indice AS 'Fila Índice', columna AS 'Columna Modificada', valor_anterior AS 'Valor Anterior', nuevo_valor AS 'Nuevo Valor', inspector AS 'Inspector' FROM bitacora_cambios", conn)
     conn.close()
     return df_bit.to_dict("records")
 
 def guardar_contenedor_db(booking, contenedor, p_linea, p_senasa, destino, estado):
-    conn = sqlite3.connect("calidad_cerroprieto_pro.db")
+    conn = _conectar_db()
     cursor = conn.cursor()
     cursor.execute("INSERT INTO contenedores_despacho (booking, contenedor, precinto_linea, precinto_senasa, destino, estado) VALUES (?, ?, ?, ?, ?, ?)",
                    (booking, contenedor, p_linea, p_senasa, destino, estado))
@@ -220,14 +480,14 @@ def guardar_contenedor_db(booking, contenedor, p_linea, p_senasa, destino, estad
     conn.close()
 
 def cargar_contenedores_db():
-    conn = sqlite3.connect("calidad_cerroprieto_pro.db")
+    conn = _conectar_db()
     df_cont = pd.read_sql_query("SELECT booking AS 'Booking', contenedor AS 'Contenedor', precinto_linea AS 'Precinto Línea', precinto_senasa AS 'Precinto SENASA', destino AS 'Destino', estado AS 'Estado' FROM contenedores_despacho", conn)
     conn.close()
     return df_cont.to_dict("records")
 
 
 def guardar_frio_db(camara, temperatura, hora_registro, estado, inspector):
-    conn = sqlite3.connect("calidad_cerroprieto_pro.db")
+    conn = _conectar_db()
     cursor = conn.cursor()
     cursor.execute(
         "INSERT INTO control_frio (camara, temperatura, hora_registro, estado, inspector) VALUES (?, ?, ?, ?, ?)",
@@ -238,7 +498,7 @@ def guardar_frio_db(camara, temperatura, hora_registro, estado, inspector):
 
 
 def cargar_frio_db(limite=50):
-    conn = sqlite3.connect("calidad_cerroprieto_pro.db")
+    conn = _conectar_db()
     df_frio = pd.read_sql_query(
         """
         SELECT hora_registro AS 'Fecha/Hora', camara AS 'Cámara', temperatura AS 'Temp °C',
@@ -392,7 +652,8 @@ def generar_pdf_resumen(
     bloque_verificacion = (
         f"[ECC_MSG]{mensaje_ref}[/ECC_MSG] "
         f"[ECC_SIG]{firma_ECDSA}[/ECC_SIG] "
-        f"[ECC_PUB]{llave_publica}[/ECC_PUB]"
+        f"[ECC_PUB]{llave_publica}[/ECC_PUB] "
+        f"[ECC_HASH]{calcular_hash_reporte(mensaje_ref, firma_ECDSA, llave_publica)}[/ECC_HASH]"
     )
     sello_data = [
         [Paragraph("<b>Sello Criptográfico de Curva Elíptica (ECC / P-256):</b>", styles["Normal"])],
