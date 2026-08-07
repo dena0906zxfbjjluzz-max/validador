@@ -61,10 +61,50 @@ def validar_datos_planta(total_filas: float | int, mermas: float | int) -> tuple
     return round(porcentaje, 4), estado
 
 
+def _normalizar_llave_hex(valor) -> str | None:
+    texto = str(valor).strip().strip('"').strip("'")
+    if not texto:
+        return None
+    if "BEGIN" in texto:
+        return texto
+    hex_limpia = "".join(texto.split()).lower().removeprefix("0x")
+    if len(hex_limpia) != 64:
+        return None
+    return hex_limpia
+
+
+def _buscar_llave_anidada(obj, nombre: str = "LLAVE_PRIVADA", ruta: str = "st.secrets"):
+    """Busca LLAVE_PRIVADA en el nivel actual o dentro de secciones TOML anidadas."""
+    try:
+        if nombre in obj:
+            return obj[nombre], f"{ruta}['{nombre}']"
+    except Exception:
+        pass
+
+    try:
+        keys = list(obj.keys())
+    except Exception:
+        return None, None
+
+    for k in keys:
+        try:
+            hijo = obj[k]
+        except Exception:
+            continue
+        # Secciones tipo [credenciales]
+        if hasattr(hijo, "keys"):
+            hallado, ruta_hallada = _buscar_llave_anidada(hijo, nombre, f"{ruta}['{k}']")
+            if hallado is not None:
+                return hallado, ruta_hallada
+    return None, None
+
+
 def leer_llave_privada_secrets() -> str | None:
     """
-    Busca exactamente la clave de primer nivel LLAVE_PRIVADA en st.secrets.
-    Guarda diagnóstico legible si falla (para mostrarlo en la UI).
+    Busca LLAVE_PRIVADA en st.secrets:
+    1) st.secrets['LLAVE_PRIVADA']
+    2) st.secrets['credenciales']['LLAVE_PRIVADA'] (formato común en Cloud)
+    3) cualquier sección anidada con esa clave
     """
     global ULTIMO_DIAGNOSTICO
 
@@ -80,40 +120,56 @@ def leer_llave_privada_secrets() -> str | None:
         ULTIMO_DIAGNOSTICO = f"st.secrets no disponible: {e}"
         return None
 
-    # Acceso exacto pedido: st.secrets['LLAVE_PRIVADA']
+    try:
+        disponibles = sorted(str(k) for k in secrets_obj.keys())
+    except Exception:
+        disponibles = []
+
+    valor = None
+    origen = None
+
+    # 1) Exacto en raíz
     try:
         valor = secrets_obj["LLAVE_PRIVADA"]
-    except KeyError:
+        origen = "st.secrets['LLAVE_PRIVADA']"
+    except Exception:
+        valor = None
+
+    # 2) Bloque [credenciales] (lo que muestra tu diagnóstico en Cloud)
+    if valor is None:
         try:
-            disponibles = sorted(str(k) for k in secrets_obj.keys())
+            valor = secrets_obj["credenciales"]["LLAVE_PRIVADA"]
+            origen = "st.secrets['credenciales']['LLAVE_PRIVADA']"
         except Exception:
-            disponibles = []
+            valor = None
+
+    # 3) Búsqueda anidada genérica
+    if valor is None:
+        valor, origen = _buscar_llave_anidada(secrets_obj)
+
+    if valor is None:
         ULTIMO_DIAGNOSTICO = (
-            "No existe st.secrets['LLAVE_PRIVADA']. "
+            "No existe LLAVE_PRIVADA en secrets. "
             f"Claves vistas en secrets: {disponibles or '(ninguna)'}. "
-            "En Cloud → Settings → Secrets use exactamente:\n"
+            "Opciones válidas en Cloud → Settings → Secrets:\n"
+            'LLAVE_PRIVADA = "tu_hex_de_64_caracteres"\n'
+            "o bien:\n"
+            "[credenciales]\n"
             'LLAVE_PRIVADA = "tu_hex_de_64_caracteres"'
         )
         return None
-    except Exception as e:
-        ULTIMO_DIAGNOSTICO = f"Error leyendo st.secrets['LLAVE_PRIVADA']: {e}"
-        return None
 
-    texto = str(valor).strip().strip('"').strip("'")
-    if not texto:
-        ULTIMO_DIAGNOSTICO = "st.secrets['LLAVE_PRIVADA'] está vacío"
-        return None
-
-    # Si Cloud guardó el hex sin comillas y TOML lo truncó/alteró, avisar por longitud
-    hex_limpia = "".join(texto.split()).lower().removeprefix("0x")
-    if "BEGIN" not in texto and len(hex_limpia) != 64:
+    texto = _normalizar_llave_hex(valor)
+    if texto is None:
+        crudo = str(valor).strip()
         ULTIMO_DIAGNOSTICO = (
-            f"LLAVE_PRIVADA encontrada pero longitud hex={len(hex_limpia)} (se esperan 64). "
-            "Asegúrese de ponerla entre comillas en Secrets."
+            f"Se encontró {origen} pero el valor no es hex de 64 caracteres "
+            f"(longitud actual={len(''.join(crudo.split()))}). "
+            "Póngala entre comillas en Secrets."
         )
         return None
 
-    ULTIMO_DIAGNOSTICO = "LLAVE_PRIVADA leída correctamente desde st.secrets"
+    ULTIMO_DIAGNOSTICO = f"LLAVE_PRIVADA leída correctamente desde {origen}"
     return texto
 
 
