@@ -7,7 +7,7 @@ import json
 import urllib.error
 import urllib.request
 import pandas as pd
-from openpyxl.styles import PatternFill
+from openpyxl.styles import PatternFill, Font, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
 
 from reportlab.lib import colors
@@ -530,6 +530,157 @@ def resaltar_errores_celdas(val):
     if val_str == "" or val_str == "-":
         return "background-color: #ffcccc; color: #990000; font-weight: bold;"
     return ""
+
+
+# Paleta corporativa Excel
+_EXCEL_AZUL_OSCURO = "1F4E78"
+_EXCEL_AZUL_CLARO = "D6E3F0"
+_EXCEL_ROJO_VACIO = "FFCCCC"
+_EXCEL_BLANCO = "FFFFFF"
+_EXCEL_TEXTO = "1A1A1A"
+
+
+def _borde_tabla_excel():
+    thin = Side(style="thin", color="B0B0B0")
+    return Border(left=thin, right=thin, top=thin, bottom=thin)
+
+
+def aplicar_estilo_corporativo_hoja(worksheet, titulo_reporte: str, n_cols: int, n_filas_datos: int):
+    """
+    Aplica diseño corporativo a una hoja ya escrita con:
+    - Fila 1: título del reporte (merge)
+    - Fila 2: encabezados de columnas (azul oscuro, blanco, negrita)
+    - Datos desde fila 3
+    - Anchos automáticos y bordes limpios
+    """
+    if n_cols < 1:
+        return
+
+    azul_fill = PatternFill(start_color=_EXCEL_AZUL_OSCURO, end_color=_EXCEL_AZUL_OSCURO, fill_type="solid")
+    azul_claro_fill = PatternFill(start_color=_EXCEL_AZUL_CLARO, end_color=_EXCEL_AZUL_CLARO, fill_type="solid")
+    blanco_font = Font(name="Calibri", bold=True, color=_EXCEL_BLANCO, size=11)
+    titulo_font = Font(name="Calibri", bold=True, color=_EXCEL_BLANCO, size=14)
+    datos_font = Font(name="Calibri", color=_EXCEL_TEXTO, size=10)
+    border = _borde_tabla_excel()
+    align_center = Alignment(horizontal="center", vertical="center", wrap_text=True)
+    align_left = Alignment(horizontal="left", vertical="center", wrap_text=True)
+
+    # --- Encabezado elegante (título) ---
+    if n_cols > 1:
+        worksheet.merge_cells(start_row=1, start_column=1, end_row=1, end_column=n_cols)
+    title_cell = worksheet.cell(row=1, column=1, value=titulo_reporte)
+    title_cell.font = titulo_font
+    title_cell.fill = azul_fill
+    title_cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+    worksheet.row_dimensions[1].height = 28
+    # Pintar celdas merged del título
+    for c in range(1, n_cols + 1):
+        cell = worksheet.cell(row=1, column=c)
+        cell.fill = azul_fill
+        cell.border = border
+
+    # --- Fila de títulos de columna (fila 2) ---
+    worksheet.row_dimensions[2].height = 22
+    for c in range(1, n_cols + 1):
+        cell = worksheet.cell(row=2, column=c)
+        cell.font = blanco_font
+        cell.fill = azul_fill
+        cell.alignment = align_center
+        cell.border = border
+
+    # --- Cuerpo de datos ---
+    ultima_fila = 2 + max(n_filas_datos, 0)
+    rojo_fill = PatternFill(start_color=_EXCEL_ROJO_VACIO, end_color=_EXCEL_ROJO_VACIO, fill_type="solid")
+    for r in range(3, ultima_fila + 1):
+        zebra = (r % 2 == 0)
+        for c in range(1, n_cols + 1):
+            cell = worksheet.cell(row=r, column=c)
+            cell.font = datos_font
+            cell.alignment = align_left
+            cell.border = border
+            val = cell.value
+            if val is None or str(val).strip() in ("", "-"):
+                cell.fill = rojo_fill
+            elif zebra:
+                cell.fill = azul_claro_fill
+
+    # --- Ancho de columna automático (textos largos, stretch film, etc.) ---
+    for c in range(1, n_cols + 1):
+        col_letter = get_column_letter(c)
+        max_len = 10
+        for r in range(2, ultima_fila + 1):
+            val = worksheet.cell(row=r, column=c).value
+            if val is None:
+                continue
+            # Medir la línea más larga si hay saltos
+            for parte in str(val).splitlines() or [""]:
+                max_len = max(max_len, len(parte))
+        # Margen + límite para no inflar a columnas absurdas
+        ancho = min(max(max_len + 3, 12), 60)
+        worksheet.column_dimensions[col_letter].width = ancho
+
+    worksheet.freeze_panes = "A3"
+    worksheet.print_title_rows = "1:2"
+
+
+def escribir_dataframe_corporativo(workbook, sheet_name: str, df: pd.DataFrame, titulo: str):
+    """Crea una hoja con título + headers corporativos + datos del DataFrame."""
+    if sheet_name in workbook.sheetnames:
+        del workbook[sheet_name]
+    ws = workbook.create_sheet(title=sheet_name[:31])
+
+    df_out = df.copy() if df is not None else pd.DataFrame()
+    if df_out.empty and df_out.columns.empty:
+        df_out = pd.DataFrame({"Aviso": ["Sin datos"]})
+
+    n_cols = max(len(df_out.columns), 1)
+    # Fila 1 reservada para título
+    ws.cell(row=1, column=1, value="")
+    # Fila 2: nombres de columna
+    for c, col_name in enumerate(df_out.columns, start=1):
+        ws.cell(row=2, column=c, value=str(col_name))
+    # Filas de datos desde 3
+    for r_idx, row in enumerate(df_out.itertuples(index=False), start=3):
+        for c_idx, valor in enumerate(row, start=1):
+            if pd.isna(valor):
+                valor = ""
+            ws.cell(row=r_idx, column=c_idx, value=valor)
+
+    aplicar_estilo_corporativo_hoja(ws, titulo, n_cols, len(df_out))
+    return ws
+
+
+def generar_excel_corporativo(
+    hojas: dict,
+    titulo_general: str = "Reporte corporativo de exportación",
+) -> io.BytesIO:
+    """
+    Genera un Excel multi-hoja con diseño corporativo.
+
+    hojas: dict[str, tuple[pd.DataFrame, str]]  # sheet_name -> (df, titulo_hoja)
+           o dict[str, pd.DataFrame]  # título = sheet_name
+    """
+    from openpyxl import Workbook
+
+    wb = Workbook()
+    # Eliminar hoja por defecto
+    default = wb.active
+    wb.remove(default)
+
+    for nombre, contenido in hojas.items():
+        if isinstance(contenido, tuple):
+            df, titulo = contenido
+        else:
+            df, titulo = contenido, f"{titulo_general} — {nombre}"
+        escribir_dataframe_corporativo(wb, nombre, df, titulo)
+
+    if not wb.sheetnames:
+        escribir_dataframe_corporativo(wb, "Reporte", pd.DataFrame({"Aviso": ["Sin datos"]}), titulo_general)
+
+    buffer = io.BytesIO()
+    wb.save(buffer)
+    buffer.seek(0)
+    return buffer
 
 def extraer_sello_ecc_pdf(pdf_bytes) -> dict:
     """

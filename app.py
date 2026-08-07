@@ -3,9 +3,6 @@ import datetime
 import io
 import pandas as pd
 
-from openpyxl.styles import PatternFill
-from openpyxl.utils import get_column_letter
-
 import funciones
 import motor_planta
 
@@ -856,57 +853,53 @@ if archivo is not None:
         col_ex1, col_ex2, col_ex3 = st.columns(3)
 
         with col_ex1:
-            buffer_completo = io.BytesIO()
-            with pd.ExcelWriter(buffer_completo, engine="openpyxl") as writer:
-                df_editado.to_excel(writer, index=False, sheet_name="Packing_List")
+            estado_lote = "CONGELADO / APROBADO" if st.session_state["lote_congelado"] else "EN REVISIÓN"
+            df_resumen = pd.DataFrame({
+                "Parámetro de Control": [
+                    "Fecha de Emisión",
+                    "Cultivo Procesado",
+                    "Mercado Destino",
+                    "Total Registros Exportados",
+                    "Errores Iniciales Detectados",
+                    "Confiabilidad del Proceso",
+                    "Estado del Lote",
+                    "Inspector Responsable",
+                    "Planta",
+                ],
+                "Detalle": [
+                    datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                    producto_sel,
+                    mercado_destino,
+                    total_filas,
+                    total_errores,
+                    f"{porcentaje_limpio}%",
+                    estado_lote,
+                    auditor_nombre,
+                    nombre_planta or "Planta Autorizada",
+                ],
+            })
+            hojas_excel = {
+                "Packing_List": (
+                    df_editado,
+                    f"Packing List — {nombre_planta or 'Planta Autorizada'} | {producto_sel}",
+                ),
+                "Trazabilidad_Resumen": (
+                    df_resumen,
+                    f"Resumen de Trazabilidad — {archivo.name}",
+                ),
+            }
+            if bitacora_db_data:
+                hojas_excel["Audit_Trail"] = (
+                    pd.DataFrame(bitacora_db_data),
+                    "Bitácora de Auditoría (Audit Trail)",
+                )
 
-                pd.DataFrame({
-                    "Parámetro de Control": [
-                        "Fecha de Emisión",
-                        "Cultivo Procesado",
-                        "Mercado Destino",
-                        "Total Registros Exportados",
-                        "Errores Iniciales Detectados",
-                        "Confiabilidad del Proceso (Motor Rust)",
-                        "Estado del Lote",
-                        "Inspector Responsable",
-                    ],
-                    "Detalle": [
-                        datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                        producto_sel,
-                        mercado_destino,
-                        total_filas,
-                        total_errores,
-                        f"{porcentaje_limpio}%",
-                        "CONGELADO / APROBADO" if st.session_state["lote_congelado"] else "EN REVISIÓN",
-                        auditor_nombre,
-                    ],
-                }).to_excel(writer, index=False, sheet_name="Trazabilidad_Resumen")
-
-                if bitacora_db_data:
-                    pd.DataFrame(bitacora_db_data).to_excel(writer, index=False, sheet_name="Audit_Trail")
-
-                for sheetname in writer.sheets:
-                    worksheet = writer.sheets[sheetname]
-                    red_fill = PatternFill(start_color="FFCCCC", end_color="FFCCCC", fill_type="solid")
-                    for row in worksheet.iter_rows(min_row=2):
-                        for cell in row:
-                            if cell.value == "" or cell.value == "-":
-                                cell.fill = red_fill
-
-                    for col in worksheet.columns:
-                        max_len = 0
-                        col_letter = get_column_letter(col[0].column)
-                        for cell in col:
-                            try:
-                                if cell.value:
-                                    max_len = max(max_len, len(str(cell.value)))
-                            except:
-                                pass
-                        worksheet.column_dimensions[col_letter].width = max(max_len + 3, 12)
-
+            buffer_completo = funciones.generar_excel_corporativo(
+                hojas_excel,
+                titulo_general="Reporte Corporativo de Exportación",
+            )
             st.download_button(
-                label="📥 Descargar Excel con Hojas Múltiples",
+                label="📥 Descargar Excel corporativo",
                 data=buffer_completo.getvalue(),
                 file_name="Reporte_Completo_Exportacion.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
