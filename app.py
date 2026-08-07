@@ -507,14 +507,18 @@ if archivo is not None:
 
         try:
             llave_publica, sello_digital = motor_planta.firmar_reporte_ecc(resumen_datos)
+            modo = motor_planta.modo_firma_activo()
             backend = motor_planta.motor_activo()
-            if backend == "rust":
-                st.success("🔒 Reporte asegurado con ECC P-256 (motor Rust nativo)")
+            if modo == "real":
+                st.success("🔒 Sello real ECC P-256 con `st.secrets['LLAVE_PRIVADA']`")
             else:
-                st.success("🔒 Reporte asegurado con ECC P-256 (motor Python / Streamlit Cloud)")
+                st.warning(
+                    "🧪 Modo demo: no hay `LLAVE_PRIVADA` en secrets. "
+                    "Se firmó con llave efímera. Configure el secret para el módulo real."
+                )
             st.code(f"Sello Digital (Firma ECC): {sello_digital}")
             st.caption(f"Llave Pública de Verificación: {llave_publica}")
-            st.caption(f"Backend criptográfico activo: `{backend}`")
+            st.caption(f"Modo de firma: `{modo}` · Backend: `{backend}`")
         except Exception as e:
             llave_publica = "LLAVE_NO_DISPONIBLE"
             sello_digital = "SELLO_NO_DISPONIBLE"
