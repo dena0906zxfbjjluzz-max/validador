@@ -28,12 +28,6 @@ _DB_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_NAME = "planta_calidad_prod.db"
 DB_PATH = os.path.join(_DB_DIR, DB_NAME)
 
-# Nombres antiguos (solo referencia; ya no se usan para conexión)
-_DB_LEGADO = (
-    "calidad_planta.db",
-    "calidad_cerroprieto_pro.db",
-)
-
 
 def _conectar_db():
     """Abre (o crea) la base genérica planta_calidad_prod.db."""
