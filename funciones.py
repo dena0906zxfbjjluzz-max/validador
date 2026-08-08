@@ -21,18 +21,119 @@ from reportlab.platypus import (
     TableStyle,
 )
 
-# Base SQLite local (persiste en el servidor entre reruns; en Cloud sobrevive al sleep
-# del proceso mientras no se re-despliegue el contenedor).
+# Base SQLite local genérica (no atada a una planta específica).
+# Si el archivo no existe, se crea al conectar e `inicializar_base_datos()` genera
+# todas las tablas de auditoría con la estructura limpia actual.
 _DB_DIR = os.path.dirname(os.path.abspath(__file__))
-_DB_CANDIDATES = [
-    os.path.join(_DB_DIR, "calidad_planta.db"),
-    os.path.join(_DB_DIR, "calidad_cerroprieto_pro.db"),  # legado
-]
-DB_PATH = next((p for p in _DB_CANDIDATES if os.path.exists(p)), _DB_CANDIDATES[0])
+DB_NAME = "planta_calidad_prod.db"
+DB_PATH = os.path.join(_DB_DIR, DB_NAME)
+
+# Nombres antiguos (solo referencia; ya no se usan para conexión)
+_DB_LEGADO = (
+    "calidad_planta.db",
+    "calidad_cerroprieto_pro.db",
+)
 
 
 def _conectar_db():
-    return sqlite3.connect(DB_PATH, check_same_thread=False)
+    """Abre (o crea) la base genérica planta_calidad_prod.db."""
+    os.makedirs(_DB_DIR, exist_ok=True)
+    conn = sqlite3.connect(DB_PATH, check_same_thread=False)
+    conn.execute("PRAGMA foreign_keys = ON")
+    return conn
+
+
+def inicializar_base_datos():
+    """
+    Crea la BD y tablas de auditoría si no existen.
+    Al usar una base nueva (p. ej. tras el rename genérico), el esquema se
+    construye desde cero con la estructura limpia actual.
+    """
+    es_nueva = not os.path.exists(DB_PATH)
+    conn = _conectar_db()
+    cursor = conn.cursor()
+
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS historial_sesion (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            hora TEXT,
+            archivo TEXT,
+            registros INTEGER,
+            confiabilidad TEXT
+        )
+    """)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS bitacora_cambios (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            fecha_hora TEXT,
+            fila_indice INTEGER,
+            columna TEXT,
+            valor_anterior TEXT,
+            nuevo_valor TEXT,
+            inspector TEXT
+        )
+    """)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS control_frio (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            camara TEXT,
+            temperatura REAL,
+            hora_registro TEXT,
+            estado TEXT,
+            inspector TEXT
+        )
+    """)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS contenedores_despacho (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            booking TEXT,
+            contenedor TEXT,
+            precinto_linea TEXT,
+            precinto_senasa TEXT,
+            destino TEXT,
+            estado TEXT
+        )
+    """)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS historial_reportes (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            fecha_hora TEXT NOT NULL,
+            lote TEXT NOT NULL,
+            hash_sha256 TEXT NOT NULL UNIQUE,
+            responsable TEXT NOT NULL,
+            archivo TEXT,
+            producto TEXT,
+            registros INTEGER,
+            firma_ecc TEXT,
+            llave_publica TEXT,
+            mensaje TEXT,
+            modo_firma TEXT,
+            backend TEXT
+        )
+    """)
+    cursor.execute(
+        "CREATE INDEX IF NOT EXISTS idx_historial_reportes_fecha ON historial_reportes(fecha_hora DESC)"
+    )
+    cursor.execute(
+        "CREATE INDEX IF NOT EXISTS idx_bitacora_fecha ON bitacora_cambios(fecha_hora)"
+    )
+
+    # Solo en bases antiguas con esquema incompleto (no aplica a archivos nuevos)
+    if not es_nueva:
+        try:
+            cursor.execute("ALTER TABLE control_frio ADD COLUMN inspector TEXT")
+        except sqlite3.OperationalError:
+            pass
+        try:
+            cursor.execute(
+                "DELETE FROM bitacora_cambios WHERE datetime(fecha_hora) < datetime('now', '-7 days')"
+            )
+        except sqlite3.OperationalError:
+            pass
+
+    conn.commit()
+    conn.close()
+    return DB_PATH
 
 
 def calcular_hash_reporte(mensaje: str, firma: str, llave_publica: str = "") -> str:
@@ -150,81 +251,6 @@ def registrar_peso_ultima_fila(df, peso):
         return df_out, False, col_peso
     df_out.iloc[-1, df_out.columns.get_loc(col_peso)] = str(peso)
     return df_out, True, col_peso
-
-
-def inicializar_base_datos():
-    conn = _conectar_db()
-    cursor = conn.cursor()
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS historial_sesion (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            hora TEXT,
-            archivo TEXT,
-            registros INTEGER,
-            confiabilidad TEXT
-        )
-    """)
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS bitacora_cambios (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            fecha_hora TEXT,
-            fila_indice INTEGER,
-            columna TEXT,
-            valor_anterior TEXT,
-            nuevo_valor TEXT,
-            inspector TEXT
-        )
-    """)
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS control_frio (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            camara TEXT,
-            temperatura REAL,
-            hora_registro TEXT,
-            estado TEXT,
-            inspector TEXT
-        )
-    """)
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS contenedores_despacho (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            booking TEXT,
-            contenedor TEXT,
-            precinto_linea TEXT,
-            precinto_senasa TEXT,
-            destino TEXT,
-            estado TEXT
-        )
-    """)
-    # Registro histórico permanente de reportes ECC exitosos
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS historial_reportes (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            fecha_hora TEXT NOT NULL,
-            lote TEXT NOT NULL,
-            hash_sha256 TEXT NOT NULL UNIQUE,
-            responsable TEXT NOT NULL,
-            archivo TEXT,
-            producto TEXT,
-            registros INTEGER,
-            firma_ecc TEXT,
-            llave_publica TEXT,
-            mensaje TEXT,
-            modo_firma TEXT,
-            backend TEXT
-        )
-    """)
-    cursor.execute(
-        "CREATE INDEX IF NOT EXISTS idx_historial_reportes_fecha ON historial_reportes(fecha_hora DESC)"
-    )
-    # Migración suave si la tabla ya existía sin columna inspector
-    try:
-        cursor.execute("ALTER TABLE control_frio ADD COLUMN inspector TEXT")
-    except sqlite3.OperationalError:
-        pass
-    cursor.execute("DELETE FROM bitacora_cambios WHERE datetime(fecha_hora) < datetime('now', '-7 days')")
-    conn.commit()
-    conn.close()
 
 
 def _supabase_config():
