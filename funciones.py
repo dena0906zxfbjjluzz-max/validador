@@ -247,8 +247,10 @@ def registrar_peso_ultima_fila(df, peso):
     return df_out, True, col_peso
 
 
-# Tabla destino en Supabase (REST PostgREST)
+# Tabla destino en Supabase: public.historial_reportes
 SUPABASE_TABLA_SELLOS = "historial_reportes"
+# Solo estas columnas (minúsculas exactas, sin extras)
+SUPABASE_CAMPOS_SELLO = ("fecha", "lote", "hash_sha256", "inspector")
 
 
 def _supabase_config():
@@ -268,41 +270,65 @@ def _supabase_config():
 
     url = None
     key = None
+    errores_acceso = []
 
-    for ukey in ("SUPABASE_URL", "supabase_url"):
+    def _get(nombre):
         try:
-            if ukey in secrets and secrets[ukey]:
-                url = str(secrets[ukey]).strip()
-                break
-        except Exception:
-            pass
-    for kkey in ("SUPABASE_KEY", "SUPABASE_SERVICE_KEY", "supabase_key"):
-        try:
-            if kkey in secrets and secrets[kkey]:
-                key = str(secrets[kkey]).strip()
-                break
-        except Exception:
-            pass
+            val = secrets[nombre]
+            if val is None:
+                return None
+            s = str(val).strip().strip('"').strip("'")
+            return s or None
+        except Exception as ex:
+            errores_acceso.append(f"{nombre}: {ex}")
+            return None
 
+    url = _get("SUPABASE_URL") or _get("supabase_url")
+    key = (
+        _get("SUPABASE_KEY")
+        or _get("SUPABASE_SERVICE_KEY")
+        or _get("supabase_key")
+    )
+
+    # Sección [supabase]
     try:
-        bloque = secrets.get("supabase")
-        if bloque is not None:
-            url = url or str(bloque.get("url") or bloque.get("URL") or "").strip() or url
-            key = (
-                key
-                or str(
-                    bloque.get("key")
-                    or bloque.get("KEY")
-                    or bloque.get("service_key")
-                    or ""
-                ).strip()
-                or key
-            )
+        bloque = secrets["supabase"]
+        if url is None:
+            for k in ("url", "URL", "SUPABASE_URL"):
+                try:
+                    v = bloque[k]
+                    if v:
+                        url = str(v).strip().strip('"').strip("'")
+                        break
+                except Exception:
+                    pass
+        if key is None:
+            for k in ("key", "KEY", "SUPABASE_KEY", "service_key", "anon_key"):
+                try:
+                    v = bloque[k]
+                    if v:
+                        key = str(v).strip().strip('"').strip("'")
+                        break
+                except Exception:
+                    pass
     except Exception:
         pass
 
     if not url or not key:
-        return None, None, "Faltan SUPABASE_URL o SUPABASE_KEY en Secrets de Streamlit"
+        extras = ""
+        try:
+            claves = sorted(str(k) for k in secrets.keys())
+            extras = f" Claves en secrets: {claves}."
+        except Exception:
+            pass
+        return (
+            None,
+            None,
+            "Faltan SUPABASE_URL o SUPABASE_KEY en Secrets de Streamlit." + extras,
+        )
+
+    if not url.startswith("http"):
+        return None, None, f"SUPABASE_URL inválida (debe empezar con https://): {url[:40]}..."
 
     return url.rstrip("/"), key, None
 
@@ -313,15 +339,14 @@ def enviar_sello_a_supabase(
     hash_sha256,
     inspector,
     tabla=None,
-    timeout=12.0,
+    timeout=15.0,
 ):
     """
-    Envía por REST HTTP (PostgREST) un registro de sello firmado a Supabase.
+    POST REST a public.historial_reportes con EXACTAMENTE:
+      { "fecha", "lote", "hash_sha256", "inspector" }
+    en minúsculas. Sin campos extra (fecha_hora/responsable ya no se envían).
 
-    Campos núcleo: fecha, lote, hash_sha256, inspector.
-    También intenta aliases legacy (fecha_hora, responsable).
-
-    Returns dict: ok, configurado, status, mensaje, payload
+    Returns dict: ok, configurado, status, mensaje, payload, endpoint
     """
     url, key, err_cfg = _supabase_config()
     if err_cfg or not url or not key:
@@ -331,125 +356,111 @@ def enviar_sello_a_supabase(
             "status": None,
             "mensaje": err_cfg or "Supabase no configurado",
             "payload": {},
+            "endpoint": None,
         }
 
     tabla_destino = (tabla or SUPABASE_TABLA_SELLOS).strip() or SUPABASE_TABLA_SELLOS
+    # PostgREST: /rest/v1/historial_reportes → public.historial_reportes
     endpoint = f"{url}/rest/v1/{tabla_destino}"
 
+    # Payload estricto — solo las 4 columnas de la tabla
     payload = {
-        "fecha": fecha,
-        "lote": lote or "N/D",
-        "hash_sha256": hash_sha256,
-        "inspector": inspector or "N/D",
-        "fecha_hora": fecha,
-        "responsable": inspector or "N/D",
+        "fecha": str(fecha or "").strip(),
+        "lote": str(lote or "N/D").strip(),
+        "hash_sha256": str(hash_sha256 or "").strip(),
+        "inspector": str(inspector or "N/D").strip(),
     }
+
+    # Validación local de campos vacíos
+    vacios = [c for c in SUPABASE_CAMPOS_SELLO if not payload.get(c)]
+    if vacios:
+        return {
+            "ok": False,
+            "configurado": True,
+            "status": None,
+            "mensaje": f"Campos vacíos, no se envió a Supabase: {vacios}",
+            "payload": payload,
+            "endpoint": endpoint,
+        }
 
     headers = {
         "apikey": key,
         "Authorization": f"Bearer {key}",
         "Content-Type": "application/json",
-        "Prefer": "resolution=ignore-duplicates,return=minimal",
         "Accept": "application/json",
+        # Devuelve la fila insertada para confirmar que no falló en silencio
+        "Prefer": "return=representation",
     }
 
-    def _post(pl):
-        body = json.dumps(pl, ensure_ascii=False).encode("utf-8")
-        req = urllib.request.Request(endpoint, data=body, method="POST", headers=headers)
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
-            status = getattr(resp, "status", 200) or 200
-            raw = resp.read().decode("utf-8", errors="replace")[:300]
-            return status, raw
+    body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+    req = urllib.request.Request(endpoint, data=body, method="POST", headers=headers)
 
     try:
-        status, detalle = _post(payload)
-        if status in (200, 201, 204):
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            status = getattr(resp, "status", 200) or 200
+            raw = resp.read().decode("utf-8", errors="replace")
+            if status in (200, 201, 204):
+                # return=representation suele devolver un array JSON
+                return {
+                    "ok": True,
+                    "configurado": True,
+                    "status": status,
+                    "mensaje": (
+                        f"INSERT OK en public.{tabla_destino} "
+                        f"(HTTP {status}). Respuesta: {(raw or '[]')[:200]}"
+                    ),
+                    "payload": payload,
+                    "endpoint": endpoint,
+                    "respuesta": (raw or "")[:500],
+                }
             return {
-                "ok": True,
+                "ok": False,
                 "configurado": True,
                 "status": status,
-                "mensaje": f"Registro enviado a Supabase ({tabla_destino})",
+                "mensaje": f"Supabase HTTP {status}: {(raw or 'sin cuerpo')[:400]}",
                 "payload": payload,
+                "endpoint": endpoint,
             }
-        return {
-            "ok": False,
-            "configurado": True,
-            "status": status,
-            "mensaje": f"Supabase respondió {status}: {detalle or 'sin detalle'}",
-            "payload": payload,
-        }
     except urllib.error.HTTPError as e:
         try:
-            detalle = e.read().decode("utf-8", errors="replace")[:400]
+            detalle = e.read().decode("utf-8", errors="replace")[:600]
         except Exception:
             detalle = str(e)
-
-        # Reintentos con esquemas mínimos o legacy
-        variantes = [
-            (
-                "minimo",
-                {
-                    "fecha": fecha,
-                    "lote": lote or "N/D",
-                    "hash_sha256": hash_sha256,
-                    "inspector": inspector or "N/D",
-                },
-            ),
-            (
-                "legacy",
-                {
-                    "fecha_hora": fecha,
-                    "lote": lote or "N/D",
-                    "hash_sha256": hash_sha256,
-                    "responsable": inspector or "N/D",
-                },
-            ),
-        ]
-        for nombre, pl in variantes:
-            try:
-                status2, _ = _post(pl)
-                if status2 in (200, 201, 204):
-                    return {
-                        "ok": True,
-                        "configurado": True,
-                        "status": status2,
-                        "mensaje": (
-                            f"Registro enviado a Supabase ({tabla_destino}, esquema {nombre})"
-                        ),
-                        "payload": pl,
-                    }
-            except urllib.error.HTTPError as e2:
-                try:
-                    detalle = e2.read().decode("utf-8", errors="replace")[:400]
-                except Exception:
-                    detalle = str(e2)
-                continue
-            except Exception as e2:
-                detalle = str(e2)
-                continue
-
+        hint = ""
+        if e.code in (401, 403):
+            hint = (
+                " | Pista: use la service_role key o cree una policy RLS de INSERT "
+                "en public.historial_reportes."
+            )
+        elif e.code == 404:
+            hint = " | Pista: la tabla public.historial_reportes no existe o el schema no es public."
+        elif e.code == 409:
+            hint = " | Pista: hash_sha256 duplicado (ya estaba insertado)."
         return {
             "ok": False,
             "configurado": True,
             "status": e.code,
-            "mensaje": f"Error HTTP {e.code} al enviar a Supabase: {detalle}",
+            "mensaje": f"Error HTTP {e.code} POST {endpoint}: {detalle}{hint}",
             "payload": payload,
+            "endpoint": endpoint,
         }
     except urllib.error.URLError as e:
         return {
             "ok": False,
             "configurado": True,
             "status": None,
-            "mensaje": f"No se pudo conectar a Supabase: {e.reason}",
+            "mensaje": f"Error de red al conectar con Supabase ({endpoint}): {e.reason}",
             "payload": payload,
+            "endpoint": endpoint,
         }
     except Exception as e:
         return {
             "ok": False,
             "configurado": True,
             "status": None,
-            "mensaje": f"Error inesperado enviando a Supabase: {e}",
+            "mensaje": f"Excepción al enviar a Supabase: {type(e).__name__}: {e}",
             "payload": payload,
+            "endpoint": endpoint,
         }
 
 
@@ -483,8 +494,7 @@ def guardar_reporte_historico(
     backend: str = "",
 ) -> dict:
     """
-    Inserta un reporte exitoso en SQLite (idempotente por hash) y envía
-    copia automática a Supabase (fecha, lote, hash, inspector) vía REST.
+    SQLite local + copia REST a Supabase (fecha, lote, hash_sha256, inspector).
     """
     inicializar_base_datos()
     conn = _conectar_db()
@@ -524,13 +534,27 @@ def guardar_reporte_historico(
         conn.commit()
     conn.close()
 
-    # Siempre replicar a Supabase cuando el inspector firma el lote
-    supabase_result = enviar_sello_a_supabase(
-        fecha=fecha_hora,
-        lote=lote or "N/D",
-        hash_sha256=hash_sha256,
-        inspector=responsable or "N/D",
-    )
+    try:
+        supabase_result = enviar_sello_a_supabase(
+            fecha=fecha_hora,
+            lote=lote or "N/D",
+            hash_sha256=hash_sha256,
+            inspector=responsable or "N/D",
+        )
+    except Exception as e:
+        supabase_result = {
+            "ok": False,
+            "configurado": True,
+            "status": None,
+            "mensaje": f"{type(e).__name__}: {e}",
+            "payload": {
+                "fecha": fecha_hora,
+                "lote": lote or "N/D",
+                "hash_sha256": hash_sha256,
+                "inspector": responsable or "N/D",
+            },
+            "endpoint": None,
+        }
 
     return {
         "guardado": not ya_existia,

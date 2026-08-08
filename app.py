@@ -715,26 +715,33 @@ if archivo is not None:
             hash_reporte = funciones.calcular_hash_reporte(
                 resumen_datos, sello_digital, llave_publica
             )
-            resultado_hist = funciones.guardar_reporte_historico(
-                fecha_hora=datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                lote=lote_reporte,
-                hash_sha256=hash_reporte,
-                responsable=auditor_nombre,
-                archivo=archivo.name,
-                producto=producto_sel,
-                registros=total_filas,
-                firma_ecc=sello_digital,
-                llave_publica=llave_publica,
-                mensaje=resumen_datos,
-                modo_firma=modo,
-                backend=backend,
-            )
+            fecha_firma = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+            try:
+                resultado_hist = funciones.guardar_reporte_historico(
+                    fecha_hora=fecha_firma,
+                    lote=lote_reporte,
+                    hash_sha256=hash_reporte,
+                    responsable=auditor_nombre,
+                    archivo=archivo.name,
+                    producto=producto_sel,
+                    registros=total_filas,
+                    firma_ecc=sello_digital,
+                    llave_publica=llave_publica,
+                    mensaje=resumen_datos,
+                    modo_firma=modo,
+                    backend=backend,
+                )
+            except Exception as e:
+                st.error(e)
+                resultado_hist = {"guardado": False, "supabase_detalle": {}}
+
             st.session_state["ultimo_hash_reporte"] = hash_reporte
             st.session_state["ultimo_supabase"] = resultado_hist.get("supabase_detalle") or {}
 
             if resultado_hist.get("guardado"):
                 st.info(
-                    f"📂 Historial local: archivado (id `{resultado_hist['id']}`) · "
+                    f"📂 Historial local: archivado (id `{resultado_hist.get('id')}`) · "
                     f"Hash `{hash_reporte[:16]}…`"
                 )
             elif resultado_hist.get("ya_existia"):
@@ -742,23 +749,36 @@ if archivo is not None:
                     f"📂 Historial local: sello ya registrado (hash `{hash_reporte[:16]}…`)"
                 )
 
-            # Copia automática a Supabase (fecha, lote, hash, inspector)
-            sb = resultado_hist.get("supabase_detalle") or {}
-            if sb.get("ok"):
-                st.success(
-                    f"☁️ Supabase: registro remoto OK — "
-                    f"fecha / lote / hash / inspector · {sb.get('mensaje', '')}"
-                )
-            elif sb.get("configurado") is False:
-                st.warning(
-                    "☁️ Supabase no configurado. Agregue `SUPABASE_URL` y `SUPABASE_KEY` en Secrets."
-                )
-            elif sb:
-                st.error(f"☁️ Supabase: no se pudo enviar la copia — {sb.get('mensaje', 'error')}")
-            elif resultado_hist.get("supabase") == "ok":
-                st.success("☁️ Supabase: registro remoto OK")
-            elif resultado_hist.get("supabase"):
-                st.error(f"☁️ Supabase: {resultado_hist['supabase']}")
+            # --- Envío explícito a Supabase (también reintenta si el guardado falló en remoto) ---
+            try:
+                sb = resultado_hist.get("supabase_detalle") or {}
+                # Reintento directo para forzar POST solo con fecha/lote/hash_sha256/inspector
+                if not sb.get("ok"):
+                    sb = funciones.enviar_sello_a_supabase(
+                        fecha=fecha_firma,
+                        lote=lote_reporte,
+                        hash_sha256=hash_reporte,
+                        inspector=auditor_nombre,
+                    )
+                    st.session_state["ultimo_supabase"] = sb
+
+                if sb.get("ok"):
+                    st.success(
+                        f"☁️ Supabase OK · public.historial_reportes · {sb.get('mensaje', '')}"
+                    )
+                    with st.expander("Payload enviado a Supabase"):
+                        st.json(sb.get("payload") or {})
+                        st.caption(f"Endpoint: `{sb.get('endpoint')}`")
+                else:
+                    msg = sb.get("mensaje") or "Error desconocido al insertar en Supabase"
+                    st.error(msg)
+                    with st.expander("Detalle del error Supabase"):
+                        st.write(f"Configurado: {sb.get('configurado')}")
+                        st.write(f"HTTP status: {sb.get('status')}")
+                        st.write(f"Endpoint: {sb.get('endpoint')}")
+                        st.json(sb.get("payload") or {})
+            except Exception as e:
+                st.error(e)
         except Exception as e:
             llave_publica = "LLAVE_NO_DISPONIBLE"
             sello_digital = "SELLO_NO_DISPONIBLE"
