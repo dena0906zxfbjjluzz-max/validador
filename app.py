@@ -276,18 +276,64 @@ max_merma_permitida = st.sidebar.number_input("Límite Máximo de Merma (%):", v
 st.markdown("---")
 st.markdown("### 📷 Módulo 6: Escaneo QR del Pallet (Validación ERP / Supabase)")
 st.caption(
-    "Active la cámara del celular o webcam del inspector, capture el QR del pallet y "
-    "valide automáticamente el sello en `public.historial_reportes` (lote + hash_sha256)."
+    "Active el escáner solo cuando lo necesite. Tras capturar el QR y consultar Supabase, "
+    "la cámara se apaga sola para liberar el lente del celular."
 )
+
+# Cámara apagada por defecto (no montar st.camera_input de forma permanente)
+if "camara_qr_activa" not in st.session_state:
+    st.session_state["camara_qr_activa"] = False
+if "camera_qr_token" not in st.session_state:
+    st.session_state["camera_qr_token"] = 0
+
+
+def _apagar_camara_qr():
+    """Desmonta st.camera_input y libera el lente del dispositivo."""
+    st.session_state["camara_qr_activa"] = False
+    st.session_state["camera_qr_token"] = int(st.session_state.get("camera_qr_token") or 0) + 1
+    # Limpia valor residual del widget de cámara (claves previas)
+    for k in list(st.session_state.keys()):
+        if str(k).startswith("camera_escaneo_qr_"):
+            try:
+                del st.session_state[k]
+            except Exception:
+                pass
+
 
 col_qr1, col_qr2 = st.columns([1, 1])
 with col_qr1:
-    foto_qr = st.camera_input(
-        "Cámara web / celular — apunte al código QR del pallet",
-        key="camera_escaneo_qr_pallet",
-    )
+    if not st.session_state["camara_qr_activa"]:
+        st.info("Lente apagado. Pulse el botón para activar el escáner.")
+        if st.button("📷 Activar Escáner QR", type="primary", key="btn_activar_escaner_qr"):
+            st.session_state["camara_qr_activa"] = True
+            st.rerun()
+    else:
+        st.caption("Escáner activo — apunte al QR y use el disparador de la cámara.")
+        foto_qr = st.camera_input(
+            "Cámara web / celular — apunte al código QR del pallet",
+            key=f"camera_escaneo_qr_{st.session_state['camera_qr_token']}",
+        )
+        if st.button("🛑 Apagar cámara", key="btn_apagar_camara_qr"):
+            _apagar_camara_qr()
+            st.rerun()
+
+        # Captura → consulta Supabase → apagar lente al instante
+        if foto_qr is not None:
+            try:
+                with st.spinner("Decodificando QR y consultando Supabase…"):
+                    resultado_qr = funciones.procesar_escaneo_qr_camara(foto_qr.getvalue())
+                st.session_state["ultimo_resultado_qr"] = resultado_qr
+            except Exception as e:
+                st.session_state["ultimo_resultado_qr"] = {
+                    "verificado": False,
+                    "tipo_ui": "error",
+                    "mensaje_ui": f"Error en escaneo QR: {e}",
+                }
+            _apagar_camara_qr()
+            st.rerun()
+
 with col_qr2:
-    st.markdown("**Opciones de respaldo**")
+    st.markdown("**Opciones de respaldo** (sin cámara)")
     img_qr_upload = st.file_uploader(
         "Subir foto del QR (si no hay cámara)",
         type=["png", "jpg", "jpeg", "webp"],
@@ -299,28 +345,20 @@ with col_qr2:
         key="texto_manual_qr_pallet",
         placeholder='{"lote":"L-001","hash_sha256":"abc...64 hex"}',
     )
-
-if st.button("🔍 Decodificar QR y validar en Supabase", type="primary", key="btn_validar_qr"):
-    imagen_bytes = None
-    if foto_qr is not None:
-        imagen_bytes = foto_qr.getvalue()
-    elif img_qr_upload is not None:
-        imagen_bytes = img_qr_upload.getvalue()
-
-    try:
-        if imagen_bytes:
-            resultado_qr = funciones.procesar_escaneo_qr_camara(imagen_bytes)
-        elif texto_qr_manual and texto_qr_manual.strip():
-            resultado_qr = funciones.validar_pallet_por_qr(texto_qr=texto_qr_manual.strip())
-        else:
-            st.warning("Capture una foto con la cámara, suba una imagen o pegue el texto del QR.")
-            resultado_qr = None
-
-        if resultado_qr is not None:
-            st.session_state["ultimo_resultado_qr"] = resultado_qr
-    except Exception as e:
-        st.error(f"Error en escaneo QR: {e}")
-        resultado_qr = None
+    if st.button("🔍 Validar respaldo en Supabase", key="btn_validar_qr_respaldo"):
+        imagen_bytes = img_qr_upload.getvalue() if img_qr_upload is not None else None
+        try:
+            if imagen_bytes:
+                resultado_qr = funciones.procesar_escaneo_qr_camara(imagen_bytes)
+            elif texto_qr_manual and texto_qr_manual.strip():
+                resultado_qr = funciones.validar_pallet_por_qr(texto_qr=texto_qr_manual.strip())
+            else:
+                st.warning("Suba una imagen o pegue el texto del QR.")
+                resultado_qr = None
+            if resultado_qr is not None:
+                st.session_state["ultimo_resultado_qr"] = resultado_qr
+        except Exception as e:
+            st.error(f"Error en escaneo QR: {e}")
 
 resultado_qr_ui = st.session_state.get("ultimo_resultado_qr")
 if resultado_qr_ui:
