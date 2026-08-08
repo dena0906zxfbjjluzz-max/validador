@@ -2,9 +2,7 @@
 
 ¡Bienvenido! Esta es una suite tecnológica e industrial avanzada (AgTech ERP) diseñada a medida para optimizar, auditar y blindar los procesos operativos y logísticos en plantas de empaque (Packing) agroindustrial de exportación.
 
-La plataforma cuenta con una arquitectura híbrida de alto rendimiento que combina la flexibilidad de **Python (Streamlit)** para la interfaz y gestión de datos, con la velocidad y seguridad matemática de un motor criptográfico nativo en **Rust**.
-
----
+La plataforma cuenta con una arquitectura híbrida de alto rendimiento que combina la flexibilidad de Python (Streamlit) para la interfaz y gestión de datos, con la velocidad y seguridad matemática de un motor criptográfico nativo en Rust.
 
 ## 🚀 Módulos Operativos Integrados
 
@@ -25,38 +23,22 @@ La plataforma cuenta con una arquitectura híbrida de alto rendimiento que combi
 ### 🚢 Módulo 5: Gestión de Contenedores, Bookings y Precintos de Aduanas
 * **Resguardo Logístico Antifraude:** Centralización y control estricto de números de Booking, identificadores de contenedores Reefer y sellado digital de los precintos oficiales de la Línea Naviera y SENASA, blindando el despacho en puerto.
 
----
-
 ## 🛡️ Diferenciadores Tecnológicos Avanzados
 
-### ⚡ Motor criptográfico Ed25519 (real + demo)
-Cada cierre oficial de lote se sella con **Ed25519** (`ed25519-dalek` en Rust), generando **firma digital** (64 bytes) y **llave pública** (32 bytes) en hexadecimal.
+### ⚡ Motor Criptográfico Ed25519 (Real + Demo)
+Cada cierre oficial de lote se sella con Ed25519 (`ed25519-dalek` en Rust), generando firma digital (64 bytes) y llave pública (32 bytes) en hexadecimal.
+* **Modo Real + Rust:** Lee `st.secrets["LLAVE_PRIVADA"]` (seed de 32 bytes / 64 hex) y firma con `motor_rust`.
+* **Respaldo Python (Multi-Capa):** `cryptography` (Ed25519) → `PyNaCl` → paquete `ed25519` si existe.
 
-* **Modo real + Rust:** lee `st.secrets["LLAVE_PRIVADA"]` (seed de 32 bytes / 64 hex) y firma con `motor_rust`.
-* **Respaldo Python (sin Rust):** `cryptography` (Ed25519) → `PyNaCl` → paquete `ed25519` si existe.
-* **Verificación:** Rust `verificar_firma_ed25519` o los mismos fallbacks Python en el módulo público.
+### 🔎 Verificación Pública de PDF
+En la barra lateral: Verificación pública ECC (sin login). Un tercero sube el PDF ejecutivo y la app comprueba la firma Ed25519:
+* **AUTÉNTICO:** Firma válida + llave oficial de planta.
+* **ALTERADO:** La firma no corresponde al mensaje (documento manipulado).
 
-### 🔎 Verificación pública de PDF
-En la barra lateral: **Verificación pública ECC** (sin login). Un tercero sube el PDF ejecutivo y la app comprueba la firma Ed25519:
-- **AUTÉNTICO:** firma válida + llave oficial de planta
-- **ALTERADO:** la firma no corresponde al mensaje (documento manipulado)
-
-### 📂 Historial permanente de reportes (SQLite)
-Cada sello ECC exitoso se archiva automáticamente en la tabla `historial_reportes`:
-- **Fecha**, **lote**, **hash SHA-256**, **responsable**
-- Idempotente por hash (no duplica el mismo sello)
-- Visible en planta (sección 6) y consultable por hash en verificación pública
-- Opcional: si configura `SUPABASE_URL` + `SUPABASE_KEY` en Secrets, se replica por REST para no perder datos al re-desplegar Cloud
+### 📂 Historial permanente de reportes (SQLite + Supabase)
+* Cada sello exitoso se archiva en SQLite local y **se envía en automático a Supabase** vía REST HTTP.
+* Campos remotos: **fecha**, **lote**, **hash_sha256**, **inspector**.
+* Secrets: `SUPABASE_URL` + `SUPABASE_KEY` → tabla PostgREST `historial_reportes`.
 
 ### 💼 Interoperabilidad Universal ERP (SAP / Oracle)
-El sistema incluye un algoritmo de limpieza y auditoría que corrige caracteres corruptos, elimina espacios invisibles y parcha celdas vacías de forma masiva en milisegundos. Permite la exportación directa en formato plano universal **(CSV Puro)** optimizado para la inyección masiva de datos limpios directamente en los módulos logísticos de ERPs corporativos sin bloqueos de formato.
-
----
-
-## 🛠️ Arquitectura del Proyecto
-
-El repositorio sigue un patrón de diseño limpio y modular:
-* `app.py`: Control central y orquestación de la interfaz gráfica interactiva del usuario (UI).
-* `funciones.py`: Biblioteca de lógica de negocio, manipulación de datos con Pandas, formateo visual múltiple con Openpyxl y renderizado de reportes ejecutivos en PDF mediante ReportLab.
-* `motor_rust/`: Código fuente nativo en Rust encargado del procesamiento de criptografía asimétrica y firmado asíncrono.
-* `requirements.txt` & `packages.txt`: Declaración estricta de dependencias y compiladores a nivel de sistema operativo para su despliegue en la nube.
+El sistema incluye un algoritmo de limpieza y auditoría que corrige caracteres corruptos, elimina espacios invisibles y parcha celdas vacías de forma masiva en milisegundos. Permite la exportación directa en formato plano universal (CSV Puro) optimizado para la inyección masiva de datos limpios directamente en los módulos logísticos de ERPs corporativos sin bloqueos de formato.

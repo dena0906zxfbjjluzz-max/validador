@@ -247,73 +247,225 @@ def registrar_peso_ultima_fila(df, peso):
     return df_out, True, col_peso
 
 
+# Tabla destino en Supabase (REST PostgREST)
+SUPABASE_TABLA_SELLOS = "historial_reportes"
+
+
 def _supabase_config():
-    """Lee URL y clave de Supabase desde st.secrets si existen (opcional)."""
+    """
+    Lee SUPABASE_URL y SUPABASE_KEY desde st.secrets.
+    Returns: (url, key, error_si_falla)
+    """
     try:
         import streamlit as st
+    except Exception as e:
+        return None, None, f"Streamlit no disponible para secrets: {e}"
 
-        url = None
-        key = None
-        # Raíz
+    try:
+        secrets = st.secrets
+    except Exception as e:
+        return None, None, f"No se pudieron leer secrets: {e}"
+
+    url = None
+    key = None
+
+    for ukey in ("SUPABASE_URL", "supabase_url"):
         try:
-            url = st.secrets.get("SUPABASE_URL") or st.secrets.get("supabase_url")
+            if ukey in secrets and secrets[ukey]:
+                url = str(secrets[ukey]).strip()
+                break
+        except Exception:
+            pass
+    for kkey in ("SUPABASE_KEY", "SUPABASE_SERVICE_KEY", "supabase_key"):
+        try:
+            if kkey in secrets and secrets[kkey]:
+                key = str(secrets[kkey]).strip()
+                break
+        except Exception:
+            pass
+
+    try:
+        bloque = secrets.get("supabase")
+        if bloque is not None:
+            url = url or str(bloque.get("url") or bloque.get("URL") or "").strip() or url
             key = (
-                st.secrets.get("SUPABASE_KEY")
-                or st.secrets.get("SUPABASE_SERVICE_KEY")
-                or st.secrets.get("supabase_key")
+                key
+                or str(
+                    bloque.get("key")
+                    or bloque.get("KEY")
+                    or bloque.get("service_key")
+                    or ""
+                ).strip()
+                or key
             )
-        except Exception:
-            pass
-        # Sección [supabase]
-        try:
-            bloque = st.secrets.get("supabase")
-            if bloque is not None:
-                url = url or bloque.get("url") or bloque.get("URL")
-                key = key or bloque.get("key") or bloque.get("KEY") or bloque.get("service_key")
-        except Exception:
-            pass
-        if url and key:
-            return str(url).rstrip("/"), str(key)
     except Exception:
         pass
-    return None, None
 
-
-def _replicar_reporte_supabase(registro: dict) -> str | None:
-    """
-    Réplica opcional en Supabase (REST) para no perder historial si Cloud se re-despliega.
-    Tabla esperada: historial_reportes (mismos campos). Retorna None si OK o mensaje de error.
-    """
-    url, key = _supabase_config()
     if not url or not key:
-        return None
+        return None, None, "Faltan SUPABASE_URL o SUPABASE_KEY en Secrets de Streamlit"
 
-    endpoint = f"{url}/rest/v1/historial_reportes"
-    body = json.dumps(registro).encode("utf-8")
-    req = urllib.request.Request(
-        endpoint,
-        data=body,
-        method="POST",
-        headers={
-            "apikey": key,
-            "Authorization": f"Bearer {key}",
-            "Content-Type": "application/json",
-            "Prefer": "resolution=ignore-duplicates,return=minimal",
-        },
-    )
+    return url.rstrip("/"), key, None
+
+
+def enviar_sello_a_supabase(
+    fecha,
+    lote,
+    hash_sha256,
+    inspector,
+    tabla=None,
+    timeout=12.0,
+):
+    """
+    Envía por REST HTTP (PostgREST) un registro de sello firmado a Supabase.
+
+    Campos núcleo: fecha, lote, hash_sha256, inspector.
+    También intenta aliases legacy (fecha_hora, responsable).
+
+    Returns dict: ok, configurado, status, mensaje, payload
+    """
+    url, key, err_cfg = _supabase_config()
+    if err_cfg or not url or not key:
+        return {
+            "ok": False,
+            "configurado": False,
+            "status": None,
+            "mensaje": err_cfg or "Supabase no configurado",
+            "payload": {},
+        }
+
+    tabla_destino = (tabla or SUPABASE_TABLA_SELLOS).strip() or SUPABASE_TABLA_SELLOS
+    endpoint = f"{url}/rest/v1/{tabla_destino}"
+
+    payload = {
+        "fecha": fecha,
+        "lote": lote or "N/D",
+        "hash_sha256": hash_sha256,
+        "inspector": inspector or "N/D",
+        "fecha_hora": fecha,
+        "responsable": inspector or "N/D",
+    }
+
+    headers = {
+        "apikey": key,
+        "Authorization": f"Bearer {key}",
+        "Content-Type": "application/json",
+        "Prefer": "resolution=ignore-duplicates,return=minimal",
+        "Accept": "application/json",
+    }
+
+    def _post(pl):
+        body = json.dumps(pl, ensure_ascii=False).encode("utf-8")
+        req = urllib.request.Request(endpoint, data=body, method="POST", headers=headers)
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            status = getattr(resp, "status", 200) or 200
+            raw = resp.read().decode("utf-8", errors="replace")[:300]
+            return status, raw
+
     try:
-        with urllib.request.urlopen(req, timeout=8) as resp:
-            if resp.status in (200, 201, 204):
-                return "ok"
-            return f"status {resp.status}"
+        status, detalle = _post(payload)
+        if status in (200, 201, 204):
+            return {
+                "ok": True,
+                "configurado": True,
+                "status": status,
+                "mensaje": f"Registro enviado a Supabase ({tabla_destino})",
+                "payload": payload,
+            }
+        return {
+            "ok": False,
+            "configurado": True,
+            "status": status,
+            "mensaje": f"Supabase respondió {status}: {detalle or 'sin detalle'}",
+            "payload": payload,
+        }
     except urllib.error.HTTPError as e:
         try:
-            detalle = e.read().decode("utf-8", errors="replace")[:200]
+            detalle = e.read().decode("utf-8", errors="replace")[:400]
         except Exception:
             detalle = str(e)
-        return f"HTTP {e.code}: {detalle}"
+
+        # Reintentos con esquemas mínimos o legacy
+        variantes = [
+            (
+                "minimo",
+                {
+                    "fecha": fecha,
+                    "lote": lote or "N/D",
+                    "hash_sha256": hash_sha256,
+                    "inspector": inspector or "N/D",
+                },
+            ),
+            (
+                "legacy",
+                {
+                    "fecha_hora": fecha,
+                    "lote": lote or "N/D",
+                    "hash_sha256": hash_sha256,
+                    "responsable": inspector or "N/D",
+                },
+            ),
+        ]
+        for nombre, pl in variantes:
+            try:
+                status2, _ = _post(pl)
+                if status2 in (200, 201, 204):
+                    return {
+                        "ok": True,
+                        "configurado": True,
+                        "status": status2,
+                        "mensaje": (
+                            f"Registro enviado a Supabase ({tabla_destino}, esquema {nombre})"
+                        ),
+                        "payload": pl,
+                    }
+            except urllib.error.HTTPError as e2:
+                try:
+                    detalle = e2.read().decode("utf-8", errors="replace")[:400]
+                except Exception:
+                    detalle = str(e2)
+                continue
+            except Exception as e2:
+                detalle = str(e2)
+                continue
+
+        return {
+            "ok": False,
+            "configurado": True,
+            "status": e.code,
+            "mensaje": f"Error HTTP {e.code} al enviar a Supabase: {detalle}",
+            "payload": payload,
+        }
+    except urllib.error.URLError as e:
+        return {
+            "ok": False,
+            "configurado": True,
+            "status": None,
+            "mensaje": f"No se pudo conectar a Supabase: {e.reason}",
+            "payload": payload,
+        }
     except Exception as e:
-        return str(e)
+        return {
+            "ok": False,
+            "configurado": True,
+            "status": None,
+            "mensaje": f"Error inesperado enviando a Supabase: {e}",
+            "payload": payload,
+        }
+
+
+def _replicar_reporte_supabase(registro: dict):
+    """Wrapper legacy. Preferir enviar_sello_a_supabase."""
+    resultado = enviar_sello_a_supabase(
+        fecha=str(registro.get("fecha") or registro.get("fecha_hora") or ""),
+        lote=str(registro.get("lote") or "N/D"),
+        hash_sha256=str(registro.get("hash_sha256") or ""),
+        inspector=str(registro.get("inspector") or registro.get("responsable") or "N/D"),
+    )
+    if not resultado.get("configurado"):
+        return None
+    if resultado.get("ok"):
+        return "ok"
+    return resultado.get("mensaje") or "error Supabase"
 
 
 def guardar_reporte_historico(
@@ -331,71 +483,62 @@ def guardar_reporte_historico(
     backend: str = "",
 ) -> dict:
     """
-    Inserta un reporte exitoso en SQLite (idempotente por hash) y, si hay secrets,
-    intenta réplica en Supabase. Devuelve {guardado, id, hash, supabase}.
+    Inserta un reporte exitoso en SQLite (idempotente por hash) y envía
+    copia automática a Supabase (fecha, lote, hash, inspector) vía REST.
     """
     inicializar_base_datos()
     conn = _conectar_db()
     cursor = conn.cursor()
-    cursor.execute("SELECT id FROM historial_reportes WHERE hash_sha256 = ?", (hash_sha256,))
-    existente = cursor.fetchone()
-    if existente:
-        conn.close()
-        return {
-            "guardado": False,
-            "ya_existia": True,
-            "id": existente[0],
-            "hash": hash_sha256,
-            "supabase": None,
-        }
-
     cursor.execute(
-        """
-        INSERT INTO historial_reportes (
-            fecha_hora, lote, hash_sha256, responsable, archivo, producto,
-            registros, firma_ecc, llave_publica, mensaje, modo_firma, backend
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """,
-        (
-            fecha_hora,
-            lote or "N/D",
-            hash_sha256,
-            responsable or "N/D",
-            archivo,
-            producto,
-            int(registros or 0),
-            firma_ecc,
-            llave_publica,
-            mensaje,
-            modo_firma,
-            backend,
-        ),
+        "SELECT id FROM historial_reportes WHERE hash_sha256 = ?", (hash_sha256,)
     )
-    new_id = cursor.lastrowid
-    conn.commit()
+    existente = cursor.fetchone()
+
+    ya_existia = bool(existente)
+    new_id = existente[0] if existente else None
+
+    if not ya_existia:
+        cursor.execute(
+            """
+            INSERT INTO historial_reportes (
+                fecha_hora, lote, hash_sha256, responsable, archivo, producto,
+                registros, firma_ecc, llave_publica, mensaje, modo_firma, backend
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                fecha_hora,
+                lote or "N/D",
+                hash_sha256,
+                responsable or "N/D",
+                archivo,
+                producto,
+                int(registros or 0),
+                firma_ecc,
+                llave_publica,
+                mensaje,
+                modo_firma,
+                backend,
+            ),
+        )
+        new_id = cursor.lastrowid
+        conn.commit()
     conn.close()
 
-    registro_remoto = {
-        "fecha_hora": fecha_hora,
-        "lote": lote or "N/D",
-        "hash_sha256": hash_sha256,
-        "responsable": responsable or "N/D",
-        "archivo": archivo,
-        "producto": producto,
-        "registros": int(registros or 0),
-        "firma_ecc": firma_ecc,
-        "llave_publica": llave_publica,
-        "mensaje": mensaje,
-        "modo_firma": modo_firma,
-        "backend": backend,
-    }
-    sb = _replicar_reporte_supabase(registro_remoto)
+    # Siempre replicar a Supabase cuando el inspector firma el lote
+    supabase_result = enviar_sello_a_supabase(
+        fecha=fecha_hora,
+        lote=lote or "N/D",
+        hash_sha256=hash_sha256,
+        inspector=responsable or "N/D",
+    )
+
     return {
-        "guardado": True,
-        "ya_existia": False,
+        "guardado": not ya_existia,
+        "ya_existia": ya_existia,
         "id": new_id,
         "hash": hash_sha256,
-        "supabase": sb,
+        "supabase": "ok" if supabase_result.get("ok") else supabase_result.get("mensaje"),
+        "supabase_detalle": supabase_result,
     }
 
 

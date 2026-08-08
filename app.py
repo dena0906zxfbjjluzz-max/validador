@@ -730,19 +730,35 @@ if archivo is not None:
                 backend=backend,
             )
             st.session_state["ultimo_hash_reporte"] = hash_reporte
+            st.session_state["ultimo_supabase"] = resultado_hist.get("supabase_detalle") or {}
+
             if resultado_hist.get("guardado"):
                 st.info(
-                    f"📂 Historial permanente: reporte archivado (id `{resultado_hist['id']}`) · "
+                    f"📂 Historial local: archivado (id `{resultado_hist['id']}`) · "
                     f"Hash `{hash_reporte[:16]}…`"
                 )
-                if resultado_hist.get("supabase") == "ok":
-                    st.caption("Réplica en Supabase: OK")
-                elif resultado_hist.get("supabase"):
-                    st.caption(f"Supabase (opcional): {resultado_hist['supabase']}")
             elif resultado_hist.get("ya_existia"):
                 st.caption(
-                    f"📂 Historial: este sello ya estaba registrado (hash `{hash_reporte[:16]}…`)"
+                    f"📂 Historial local: sello ya registrado (hash `{hash_reporte[:16]}…`)"
                 )
+
+            # Copia automática a Supabase (fecha, lote, hash, inspector)
+            sb = resultado_hist.get("supabase_detalle") or {}
+            if sb.get("ok"):
+                st.success(
+                    f"☁️ Supabase: registro remoto OK — "
+                    f"fecha / lote / hash / inspector · {sb.get('mensaje', '')}"
+                )
+            elif sb.get("configurado") is False:
+                st.warning(
+                    "☁️ Supabase no configurado. Agregue `SUPABASE_URL` y `SUPABASE_KEY` en Secrets."
+                )
+            elif sb:
+                st.error(f"☁️ Supabase: no se pudo enviar la copia — {sb.get('mensaje', 'error')}")
+            elif resultado_hist.get("supabase") == "ok":
+                st.success("☁️ Supabase: registro remoto OK")
+            elif resultado_hist.get("supabase"):
+                st.error(f"☁️ Supabase: {resultado_hist['supabase']}")
         except Exception as e:
             llave_publica = "LLAVE_NO_DISPONIBLE"
             sello_digital = "SELLO_NO_DISPONIBLE"
