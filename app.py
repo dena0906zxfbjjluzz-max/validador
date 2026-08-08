@@ -237,22 +237,35 @@ mercado_destino = st.sidebar.selectbox(
 )
 
 if producto_sel == "Palta Hass":
-    limit_temp_default = 5.0
+    limit_temp_default = 5.0  # centro del rango 4.0–6.0
     limit_brix_default = 21.0
 elif producto_sel == "Arándano":
-    limit_temp_default = 1.5
+    limit_temp_default = 0.0  # centro del rango -0.5–0.5
     limit_brix_default = 11.5
 elif producto_sel == "Espárrago":
-    limit_temp_default = 2.0
+    limit_temp_default = 3.0  # centro del rango 2.0–4.0
     limit_brix_default = 8.0
 elif producto_sel == "Uva Red Globe":
-    limit_temp_default = 0.5
+    limit_temp_default = -0.5  # centro del rango -1.0–0.0
     limit_brix_default = 16.0
 else:
     limit_temp_default = 4.0
     limit_brix_default = 10.0
 
-temp_min_limite = st.sidebar.number_input("Temp. Mínima Cámara (°C):", value=limit_temp_default, step=0.5)
+# Rangos comerciales de cadena de frío (fuente: diccionario en funciones)
+_tmin_fruta, _tmax_fruta = funciones.obtener_rango_frio_fruta(producto_sel)
+if producto_sel == "Personalizado":
+    temp_min_limite = st.sidebar.number_input("Temp. Mínima Cámara (°C):", value=limit_temp_default, step=0.5)
+    temp_max_limite = st.sidebar.number_input(
+        "Temp. Máxima Cámara (°C):", value=limit_temp_default + 2.0, step=0.5
+    )
+else:
+    temp_min_limite = _tmin_fruta
+    temp_max_limite = _tmax_fruta
+    st.sidebar.caption(
+        f"Cadena de frío ({producto_sel}): **{temp_min_limite} °C** a **{temp_max_limite} °C**"
+    )
+
 brix_min_limite = st.sidebar.number_input("Materia Seca / Brix Mínimo:", value=limit_brix_default, step=0.5)
 
 st.sidebar.subheader("📦 Tolerancias Logísticas")
@@ -480,6 +493,16 @@ if archivo is not None:
         # MÓDULO 4
         st.markdown("---")
         st.markdown("### 🌡️ Módulo 4: Control Térmico de Cadena de Frío (Pre-frío y Contenedores)")
+        t_min_f, t_max_f = funciones.obtener_rango_frio_fruta(
+            producto_sel,
+            temp_min_override=temp_min_limite,
+            temp_max_override=temp_max_limite if producto_sel == "Personalizado" else temp_max_limite,
+        )
+        st.caption(
+            f"Rango óptimo comercial para **{producto_sel}**: "
+            f"{t_min_f} °C a {t_max_f} °C"
+        )
+
         col_f1, col_f2, col_f3 = st.columns(3)
         with col_f1:
             camara_sel = st.selectbox(
@@ -487,27 +510,62 @@ if archivo is not None:
                 ["Pre-Cámara 01", "Túnel de Enfriamiento 03", "Cámara de Almacenamiento 05", "Contenedor Reefer Puerto"],
             )
         with col_f2:
-            temp_actual_camara = st.number_input("Temperatura Registrada (°C):", value=temp_min_limite, step=0.5)
+            valor_temp_default = float(
+                max(t_min_f, min(limit_temp_default, t_max_f))
+            )
+            temp_actual_camara = st.number_input(
+                "Temperatura Registrada (°C):",
+                value=valor_temp_default,
+                step=0.5,
+                format="%.1f",
+            )
         with col_f3:
-            frio_ok = temp_actual_camara <= temp_min_limite + 1.0
-            estado_frio = "FRÍO ÓPTIMO" if frio_ok else "RUPTURA CADENA DE FRÍO"
-            if frio_ok:
-                st.success(f"❄️ **Frío Óptimo:** En rango seguro ({temp_actual_camara}°C)")
+            prev = funciones.validar_temperatura_fruta(
+                temp_actual_camara,
+                producto_sel,
+                temp_min_override=t_min_f,
+                temp_max_override=t_max_f,
+            )
+            if prev["en_rango"]:
+                st.success(
+                    f"✅ En rango ({prev['temp_min']}–{prev['temp_max']} °C) · "
+                    f"lectura {prev['temperatura']} °C"
+                )
             else:
                 st.error(
-                    f"🚨 **Ruptura de Cadena de Frío:** Temperatura alta ({temp_actual_camara}°C). "
-                    "Registre la lectura para dejar evidencia en auditoría."
+                    f"🚨 Fuera de rango ({prev['temp_min']}–{prev['temp_max']} °C) · "
+                    f"lectura {prev['temperatura']} °C"
                 )
+
             if st.button("💾 Registrar lectura de frío"):
-                funciones.guardar_frio_db(
-                    camara_sel,
-                    float(temp_actual_camara),
-                    datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                    estado_frio,
-                    auditor_nombre,
-                )
-                st.success("Lectura de temperatura guardada en SQLite.")
-                st.rerun()
+                try:
+                    resultado_frio = funciones.registrar_control_frio(
+                        camara=camara_sel,
+                        temperatura=float(temp_actual_camara),
+                        producto=producto_sel,
+                        inspector=auditor_nombre,
+                        temp_min_override=t_min_f,
+                        temp_max_override=t_max_f,
+                    )
+                    if resultado_frio["tipo_ui"] == "success":
+                        st.success(resultado_frio["mensaje_ui"])
+                    else:
+                        st.error(resultado_frio["mensaje_ui"])
+
+                    if resultado_frio.get("sqlite_ok"):
+                        st.caption(resultado_frio.get("sqlite_msg", "Guardado en SQLite"))
+                    else:
+                        st.warning(resultado_frio.get("sqlite_msg", "Error SQLite"))
+
+                    sb_f = resultado_frio.get("supabase") or {}
+                    if sb_f.get("ok"):
+                        st.caption(f"☁️ Supabase control_frio: {sb_f.get('mensaje')}")
+                    elif sb_f.get("configurado") is False:
+                        st.caption("☁️ Supabase no configurado (solo local).")
+                    else:
+                        st.error(sb_f.get("mensaje") or "Error al enviar control_frio a Supabase")
+                except Exception as e:
+                    st.error(e)
 
         historial_frio = funciones.cargar_frio_db()
         if historial_frio:
