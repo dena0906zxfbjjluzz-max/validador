@@ -256,6 +256,12 @@ SUPABASE_CAMPOS_SELLO = ("fecha", "lote", "hash_sha256", "inspector")
 def _supabase_config():
     """
     Lee SUPABASE_URL y SUPABASE_KEY desde st.secrets.
+
+    Orden de búsqueda:
+      1) st.secrets["credenciales"]["SUPABASE_URL"] / ["SUPABASE_KEY"]  (Cloud actual)
+      2) st.secrets["SUPABASE_URL"] / ["SUPABASE_KEY"]  (raíz)
+      3) st.secrets["supabase"]["url"] / ["key"]
+
     Returns: (url, key, error_si_falla)
     """
     try:
@@ -268,51 +274,94 @@ def _supabase_config():
     except Exception as e:
         return None, None, f"No se pudieron leer secrets: {e}"
 
+    def _limpiar(val):
+        if val is None:
+            return None
+        s = str(val).strip().strip('"').strip("'")
+        return s or None
+
+    def _desde_bloque(bloque, *nombres):
+        if bloque is None:
+            return None
+        for nombre in nombres:
+            try:
+                v = bloque[nombre]
+            except Exception:
+                try:
+                    v = bloque.get(nombre)  # type: ignore[attr-defined]
+                except Exception:
+                    continue
+            limpio = _limpiar(v)
+            if limpio:
+                return limpio
+        return None
+
     url = None
     key = None
-    errores_acceso = []
+    origen = None
 
-    def _get(nombre):
-        try:
-            val = secrets[nombre]
-            if val is None:
-                return None
-            s = str(val).strip().strip('"').strip("'")
-            return s or None
-        except Exception as ex:
-            errores_acceso.append(f"{nombre}: {ex}")
-            return None
-
-    url = _get("SUPABASE_URL") or _get("supabase_url")
-    key = (
-        _get("SUPABASE_KEY")
-        or _get("SUPABASE_SERVICE_KEY")
-        or _get("supabase_key")
-    )
-
-    # Sección [supabase]
+    # 1) Preferido: dentro de [credenciales]  (diagnóstico: solo existe esta clave raíz)
     try:
-        bloque = secrets["supabase"]
-        if url is None:
-            for k in ("url", "URL", "SUPABASE_URL"):
-                try:
-                    v = bloque[k]
-                    if v:
-                        url = str(v).strip().strip('"').strip("'")
-                        break
-                except Exception:
-                    pass
-        if key is None:
-            for k in ("key", "KEY", "SUPABASE_KEY", "service_key", "anon_key"):
-                try:
-                    v = bloque[k]
-                    if v:
-                        key = str(v).strip().strip('"').strip("'")
-                        break
-                except Exception:
-                    pass
+        creds = secrets["credenciales"]
+        url = _desde_bloque(
+            creds,
+            "SUPABASE_URL",
+            "supabase_url",
+            "URL",
+            "url",
+        )
+        key = _desde_bloque(
+            creds,
+            "SUPABASE_KEY",
+            "SUPABASE_SERVICE_KEY",
+            "supabase_key",
+            "service_key",
+            "KEY",
+            "key",
+            "anon_key",
+        )
+        if url and key:
+            origen = "st.secrets['credenciales']"
     except Exception:
-        pass
+        creds = None
+
+    # 2) Raíz
+    if not url or not key:
+        try:
+            url = url or _limpiar(secrets["SUPABASE_URL"])
+        except Exception:
+            pass
+        try:
+            url = url or _limpiar(secrets["supabase_url"])
+        except Exception:
+            pass
+        try:
+            key = key or _limpiar(secrets["SUPABASE_KEY"])
+        except Exception:
+            pass
+        try:
+            key = key or _limpiar(secrets["SUPABASE_SERVICE_KEY"])
+        except Exception:
+            pass
+        try:
+            key = key or _limpiar(secrets["supabase_key"])
+        except Exception:
+            pass
+        if url and key and origen is None:
+            origen = "st.secrets (raíz)"
+
+    # 3) Sección [supabase]
+    if not url or not key:
+        try:
+            bloque = secrets["supabase"]
+            url = url or _desde_bloque(bloque, "url", "URL", "SUPABASE_URL")
+            key = key or _desde_bloque(
+                bloque, "key", "KEY", "SUPABASE_KEY", "service_key", "anon_key"
+            )
+            if url and key and origen is None:
+                origen = "st.secrets['supabase']"
+        except Exception:
+            pass
 
     if not url or not key:
         extras = ""
@@ -321,10 +370,24 @@ def _supabase_config():
             extras = f" Claves en secrets: {claves}."
         except Exception:
             pass
+        detalle_creds = ""
+        try:
+            creds = secrets["credenciales"]
+            sub = sorted(str(k) for k in creds.keys())
+            detalle_creds = f" Claves dentro de credenciales: {sub}."
+        except Exception:
+            detalle_creds = (
+                " No se encontraron subclaves en [credenciales]. "
+                "Defina SUPABASE_URL y SUPABASE_KEY dentro de ese bloque."
+            )
         return (
             None,
             None,
-            "Faltan SUPABASE_URL o SUPABASE_KEY en Secrets de Streamlit." + extras,
+            "Faltan SUPABASE_URL o SUPABASE_KEY. "
+            "Úselas como st.secrets['credenciales']['SUPABASE_URL'] y "
+            "st.secrets['credenciales']['SUPABASE_KEY']."
+            + extras
+            + detalle_creds,
         )
 
     if not url.startswith("http"):
