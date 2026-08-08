@@ -2,3 +2,4 @@ build-essential
 rustc
 cargo
 pkg-config
+libzbar0

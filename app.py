@@ -272,6 +272,88 @@ st.sidebar.subheader("📦 Tolerancias Logísticas")
 peso_min_caja = st.sidebar.number_input("Peso Mínimo Neto Caja (kg):", value=4.0, step=0.1)
 max_merma_permitida = st.sidebar.number_input("Límite Máximo de Merma (%):", value=5.0, step=0.5)
 
+# ─── Módulo 6: Escaneo QR de pallets (no requiere Excel) ───
+st.markdown("---")
+st.markdown("### 📷 Módulo 6: Escaneo QR del Pallet (Validación ERP / Supabase)")
+st.caption(
+    "Active la cámara del celular o webcam del inspector, capture el QR del pallet y "
+    "valide automáticamente el sello en `public.historial_reportes` (lote + hash_sha256)."
+)
+
+col_qr1, col_qr2 = st.columns([1, 1])
+with col_qr1:
+    foto_qr = st.camera_input(
+        "Cámara web / celular — apunte al código QR del pallet",
+        key="camera_escaneo_qr_pallet",
+    )
+with col_qr2:
+    st.markdown("**Opciones de respaldo**")
+    img_qr_upload = st.file_uploader(
+        "Subir foto del QR (si no hay cámara)",
+        type=["png", "jpg", "jpeg", "webp"],
+        key="upload_foto_qr_pallet",
+    )
+    texto_qr_manual = st.text_area(
+        "O pegue el texto del QR (JSON / hash / lote|hash):",
+        height=100,
+        key="texto_manual_qr_pallet",
+        placeholder='{"lote":"L-001","hash_sha256":"abc...64 hex"}',
+    )
+
+if st.button("🔍 Decodificar QR y validar en Supabase", type="primary", key="btn_validar_qr"):
+    imagen_bytes = None
+    if foto_qr is not None:
+        imagen_bytes = foto_qr.getvalue()
+    elif img_qr_upload is not None:
+        imagen_bytes = img_qr_upload.getvalue()
+
+    try:
+        if imagen_bytes:
+            resultado_qr = funciones.procesar_escaneo_qr_camara(imagen_bytes)
+        elif texto_qr_manual and texto_qr_manual.strip():
+            resultado_qr = funciones.validar_pallet_por_qr(texto_qr=texto_qr_manual.strip())
+        else:
+            st.warning("Capture una foto con la cámara, suba una imagen o pegue el texto del QR.")
+            resultado_qr = None
+
+        if resultado_qr is not None:
+            st.session_state["ultimo_resultado_qr"] = resultado_qr
+    except Exception as e:
+        st.error(f"Error en escaneo QR: {e}")
+        resultado_qr = None
+
+resultado_qr_ui = st.session_state.get("ultimo_resultado_qr")
+if resultado_qr_ui:
+    if resultado_qr_ui.get("tipo_ui") == "success":
+        st.success(
+            resultado_qr_ui.get("mensaje_ui")
+            or "✅ Pallet verificado de forma segura mediante QR en Supabase."
+        )
+    else:
+        st.error(
+            resultado_qr_ui.get("mensaje_ui")
+            or "🚨 ALERTA: no se pudo verificar el pallet contra Supabase."
+        )
+
+    payload_qr = resultado_qr_ui.get("payload") or {}
+    if payload_qr:
+        st.caption(
+            f"Lote extraído: `{payload_qr.get('lote') or 'N/D'}` · "
+            f"Hash: `{(payload_qr.get('hash_sha256') or 'N/D')[:24]}"
+            f"{'…' if payload_qr.get('hash_sha256') and len(payload_qr.get('hash_sha256') or '') > 24 else ''}`"
+        )
+    reg = resultado_qr_ui.get("registro")
+    if reg:
+        with st.expander("Registro en historial_reportes (Supabase)"):
+            st.json(reg)
+    sb_qr = resultado_qr_ui.get("supabase") or {}
+    if sb_qr and not resultado_qr_ui.get("verificado"):
+        with st.expander("Detalle consulta Supabase"):
+            st.write(sb_qr.get("mensaje"))
+            st.caption(f"Endpoint: `{sb_qr.get('endpoint')}`")
+            if sb_qr.get("filas") is not None:
+                st.json(sb_qr.get("filas"))
+
 archivo = st.file_uploader(
     "Cargar Base de Datos de Recepción / Empaque (Excel o CSV)", type=["xlsx", "csv"]
 )

@@ -5,5 +5,7 @@ reportlab
 cryptography
 PyNaCl
 pypdf>=5.0.0
+Pillow
+pyzbar
 maturin
 ./motor_rust

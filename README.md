@@ -23,6 +23,12 @@ La plataforma cuenta con una arquitectura híbrida de alto rendimiento que combi
 ### 🚢 Módulo 5: Gestión de Contenedores, Bookings y Precintos de Aduanas
 * **Resguardo Logístico Antifraude:** Centralización y control estricto de números de Booking, identificadores de contenedores Reefer y sellado digital de los precintos oficiales de la Línea Naviera y SENASA, blindando el despacho en puerto.
 
+### 📷 Módulo 6: Escaneo QR del Pallet (Supabase)
+* **Cámara del inspector:** `st.camera_input` activa webcam o cámara del celular.
+* **Decodificación:** `pyzbar` + Pillow extraen el texto del QR (JSON, hash SHA-256 o `lote|hash`).
+* **Validación en la nube:** consulta automática a `public.historial_reportes` (lote / `hash_sha256`).
+* **Resultado:** ✅ pallet verificado si el hash está registrado; 🚨 alerta si no coincide.
+
 ## 🛡️ Diferenciadores Tecnológicos Avanzados
 
 ### ⚡ Motor Criptográfico Ed25519 (Real + Demo)
