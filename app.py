@@ -1026,31 +1026,17 @@ def _cnt_aplicar_prefill(pl=None, reg=None):
         st.session_state["cnt_form_psenasa"] = psenasa
 
 
-def _mod_header(eyebrow: str, heading: str, ayuda: str = ""):
-    """Encabezado uniforme de módulos (estilo Módulo 5)."""
-    st.markdown(
-        f'<p class="sb-card-title">{eyebrow}</p>'
-        f'<p class="sb-card-heading">{heading}</p>',
-        unsafe_allow_html=True,
-    )
-    if ayuda:
-        st.caption(ayuda)
-
-
-def _mod_sub(titulo: str):
-    st.markdown(
-        f'<p class="sb-card-title">{titulo}</p>',
-        unsafe_allow_html=True,
-    )
-
-
 # ─── Shell dashboard 3 columnas [1, 2, 1] ─────────────────────────────────────
 col_izq, col_cen, col_der = st.columns([1, 2, 1])
 
 # ── Columna izquierda: Parámetros de Planta ───────────────────────────────────
 with col_izq:
     with st.container(border=True):
-        _mod_header("Configuración", "Parámetros de planta")
+        st.markdown(
+            '<p class="sb-card-title">Configuración</p>'
+            '<p class="sb-card-heading">Parámetros de planta</p>',
+            unsafe_allow_html=True,
+        )
 
         auditor_nombre = st.text_input("Inspector asignado:", value="Control de Calidad", key="dash_inspector")
         producto_sel = st.selectbox(
@@ -1105,55 +1091,140 @@ with col_izq:
             "Límite máximo de merma (%):", value=5.0, step=0.5, key="dash_merma"
         )
 
-# ── Columna centro: resumen operativo ────────────────────────────────────────
+# ── Columna centro: Módulo 6 Escaneo QR ───────────────────────────────────────
 with col_cen:
     with st.container(border=True):
-        _mod_header(
-            "Operación en planta",
-            "Panel de módulos",
-            "Los módulos 4–6 están abajo con el mismo diseño (escaneo + acción en 1 clic). "
-            "Cargue el Excel para balanza, LMR, trazabilidad y packing list.",
+        st.markdown(
+            '<p class="sb-card-title">Supabase · historial_reportes</p>'
+            '<p class="sb-card-heading">Módulo 6 — Escaneo QR del pallet</p>',
+            unsafe_allow_html=True,
         )
-        c_a, c_b, c_c = st.columns(3)
-        with c_a:
-            st.metric("Cultivo", producto_sel)
-        with c_b:
-            st.metric("Destino", mercado_destino.split("(")[0].strip())
-        with c_c:
-            st.metric("Inspector", auditor_nombre[:22] + ("…" if len(auditor_nombre) > 22 else ""))
-
         st.caption(
-            f"Cadena de frío activa: **{temp_min_limite} °C** – **{temp_max_limite} °C** · "
-            f"Peso mín. caja {peso_min_caja} kg · Merma máx. {max_merma_permitida} %"
+            "Active el escáner solo cuando lo necesite. Tras capturar el QR y consultar Supabase, "
+            "la cámara se apaga sola para liberar el lente del celular."
         )
 
-        qr_ui_cen = st.session_state.get("ultimo_resultado_qr")
-        cnt_ui_cen = st.session_state.get("ultimo_resultado_cnt")
-        col_res1, col_res2 = st.columns(2)
-        with col_res1:
-            _mod_sub("Último pallet (M6)")
-            if qr_ui_cen:
-                if qr_ui_cen.get("verificado") or qr_ui_cen.get("tipo_ui") == "success":
-                    st.success("QR verificado")
+        if not st.session_state["camara_qr_activa"]:
+            st.info("Lente apagado. Pulse el botón verde para activar el escáner.")
+            if st.button(
+                "📷 Activar Escáner QR",
+                type="primary",
+                key="btn_activar_escaner_qr",
+            ):
+                st.session_state["camara_qr_activa"] = True
+                st.rerun()
+        else:
+            st.caption("Escáner activo — apunte al QR y use el disparador de la cámara.")
+            foto_qr = st.camera_input(
+                "Cámara web / celular — apunte al código QR del pallet",
+                key=f"camera_escaneo_qr_{st.session_state['camera_qr_token']}",
+            )
+            if st.button("🛑 Apagar cámara", key="btn_apagar_camara_qr"):
+                _apagar_camara_qr()
+                st.rerun()
+
+            if foto_qr is not None:
+                try:
+                    with st.spinner("Decodificando QR y consultando Supabase…"):
+                        resultado_qr = funciones.procesar_escaneo_qr_camara(foto_qr.getvalue())
+                    st.session_state["ultimo_resultado_qr"] = resultado_qr
+                except Exception as e:
+                    st.session_state["ultimo_resultado_qr"] = {
+                        "verificado": False,
+                        "tipo_ui": "error",
+                        "mensaje_ui": f"Error en escaneo QR: {e}",
+                    }
+                _apagar_camara_qr()
+                st.rerun()
+
+        st.markdown("---")
+        # Respaldo fuera de expander anidado problemático (íconos/upload)
+        st.markdown(
+            '<p class="sb-card-title">Sin cámara</p>'
+            '<p class="sb-card-heading" style="font-size:0.95rem;margin-bottom:0.5rem;">'
+            "Validación manual / foto del QR</p>",
+            unsafe_allow_html=True,
+        )
+        img_qr_upload = st.file_uploader(
+            "Subir foto del QR",
+            type=["png", "jpg", "jpeg", "webp"],
+            key="upload_foto_qr_pallet",
+        )
+        texto_qr_manual = st.text_area(
+            "Texto del QR (JSON / hash / lote|hash)",
+            height=90,
+            key="texto_manual_qr_pallet",
+            placeholder='{"lote":"L-001","hash_sha256":"abc...64 hex"}',
+        )
+        if st.button("Validar respaldo en Supabase", key="btn_validar_qr_respaldo"):
+            imagen_bytes = img_qr_upload.getvalue() if img_qr_upload is not None else None
+            try:
+                if imagen_bytes is not None and img_qr_upload is not None:
+                    _ok_img, _msg_img = firewall.validar_upload_bytes(
+                        img_qr_upload.name, imagen_bytes
+                    )
+                    if not _ok_img:
+                        st.error(f"🛡️ Cortafuego: {_msg_img}")
+                        resultado_qr = None
+                    else:
+                        resultado_qr = funciones.procesar_escaneo_qr_camara(imagen_bytes)
+                elif texto_qr_manual and texto_qr_manual.strip():
+                    _ok_txt, _txt_o_err = firewall.validar_entrada_operativa(
+                        texto_qr_manual.strip()
+                    )
+                    if not _ok_txt:
+                        st.error(f"🛡️ Cortafuego: {_txt_o_err}")
+                        resultado_qr = None
+                    else:
+                        resultado_qr = funciones.validar_pallet_por_qr(texto_qr=_txt_o_err)
                 else:
-                    st.error("QR no verificado")
-                st.caption((qr_ui_cen.get("mensaje_ui") or "")[:120])
+                    st.warning("Suba una imagen o pegue el texto del QR.")
+                    resultado_qr = None
+                if resultado_qr is not None:
+                    st.session_state["ultimo_resultado_qr"] = resultado_qr
+            except Exception as e:
+                st.error(f"Error en escaneo QR: {e}")
+
+        resultado_qr_ui = st.session_state.get("ultimo_resultado_qr")
+        if resultado_qr_ui:
+            if resultado_qr_ui.get("tipo_ui") == "success":
+                st.success(
+                    resultado_qr_ui.get("mensaje_ui")
+                    or "✅ Pallet verificado de forma segura mediante QR en Supabase."
+                )
             else:
-                st.info("Sin escaneos de pallet en esta sesión.")
-        with col_res2:
-            _mod_sub("Último contenedor (M5)")
-            if cnt_ui_cen:
-                if cnt_ui_cen.get("tipo_ui") == "success":
-                    st.success("Contenedor OK")
-                else:
-                    st.warning((cnt_ui_cen.get("mensaje_ui") or "Consulta hecha")[:90])
-            else:
-                st.info("Sin consultas de contenedor en esta sesión.")
+                st.error(
+                    resultado_qr_ui.get("mensaje_ui")
+                    or "🚨 ALERTA: no se pudo verificar el pallet contra Supabase."
+                )
+
+            payload_qr = resultado_qr_ui.get("payload") or {}
+            if payload_qr:
+                st.caption(
+                    f"Lote extraído: `{payload_qr.get('lote') or 'N/D'}` · "
+                    f"Hash: `{(payload_qr.get('hash_sha256') or 'N/D')[:24]}"
+                    f"{'…' if payload_qr.get('hash_sha256') and len(payload_qr.get('hash_sha256') or '') > 24 else ''}`"
+                )
+            reg = resultado_qr_ui.get("registro")
+            if reg:
+                with st.expander("Registro en historial_reportes (Supabase)"):
+                    st.json(reg)
+            sb_qr = resultado_qr_ui.get("supabase") or {}
+            if sb_qr and not resultado_qr_ui.get("verificado"):
+                with st.expander("Detalle consulta Supabase"):
+                    st.write(sb_qr.get("mensaje"))
+                    st.caption(f"Endpoint: `{sb_qr.get('endpoint')}`")
+                    if sb_qr.get("filas") is not None:
+                        st.json(sb_qr.get("filas"))
 
 # ── Columna derecha: Estado BD + verificación ECC ─────────────────────────────
 with col_der:
     with st.container(border=True):
-        _mod_header("Infraestructura", "Estado de base de datos")
+        st.markdown(
+            '<p class="sb-card-title">Infraestructura</p>'
+            '<p class="sb-card-heading">Estado de base de datos</p>',
+            unsafe_allow_html=True,
+        )
 
         # Solo lectura de secrets / estado de sesión (sin writes a Supabase)
         _sb_url, _sb_key, _sb_err = None, None, None
@@ -1197,7 +1268,11 @@ with col_der:
             st.caption(f"Último hash de sesión: `{str(ultimo_hash)[:20]}…`")
 
         st.markdown("---")
-        _mod_header("Criptografía", "Verificación ECC")
+        st.markdown(
+            '<p class="sb-card-title">Criptografía</p>'
+            '<p class="sb-card-heading">Verificación ECC</p>',
+            unsafe_allow_html=True,
+        )
 
         try:
             _modo_ecc = motor_planta.modo_firma_activo()
@@ -1241,10 +1316,22 @@ with col_der:
                 "Eso es independiente de subir el Excel."
             )
         st.caption(f"Diagnóstico: {_diag_ecc}")
+
+        qr_ui = st.session_state.get("ultimo_resultado_qr")
+        if qr_ui:
+            if qr_ui.get("verificado"):
+                st.success("Último QR: verificado")
+            else:
+                st.warning("Último QR: no verificado / alerta")
+
         st.caption("PDF firmado: use **Verificación pública ECC** en la barra de navegación.")
 
     with st.container(border=True):
-        _mod_header("Seguridad", "Cortafuego de planta")
+        st.markdown(
+            '<p class="sb-card-title">Seguridad</p>'
+            '<p class="sb-card-heading">Cortafuego de planta</p>',
+            unsafe_allow_html=True,
+        )
         _fw = firewall.resumen_panel(st.session_state)
         st.markdown(
             '<span class="sb-pill ok">Firewall ON</span>',
@@ -1270,6 +1357,7 @@ with col_der:
                     evento = _html.escape(str(e.get("evento") or "—"))
                     sev = _html.escape(str(e.get("severidad") or "info"))
                     det = _html.escape(str(e.get("detalle") or "").strip())
+                    # HTML propio: no usar st.caption(`code`) — el badge de code se sale del card
                     st.markdown(
                         f"""
                         <div class="fw-event-row">
@@ -1284,149 +1372,27 @@ with col_der:
                         unsafe_allow_html=True,
                     )
 
-# ─── Módulo 6: QR pallet (mismo layout que Módulo 5) ─────────────────────────
-st.markdown("---")
-with st.container(border=True):
-    _mod_header(
-        "Supabase · historial_reportes",
-        "Módulo 6 — Escaneo QR del pallet",
-        "Active el escáner solo cuando lo necesite. Tras capturar el QR y consultar Supabase, "
-        "la cámara se apaga sola. Misma UX que contenedores (Módulo 5).",
-    )
-
-    col_q_scan, col_q_form = st.columns([1, 1])
-
-    with col_q_scan:
-        _mod_sub("Escaneo rápido")
-        if not st.session_state["camara_qr_activa"]:
-            st.info("Lente apagado. Active el escáner solo para leer el QR del pallet.")
-            if st.button(
-                "Activar escáner de pallet",
-                type="primary",
-                key="btn_activar_escaner_qr",
-            ):
-                st.session_state["camara_qr_activa"] = True
-                st.rerun()
-        else:
-            st.caption("Escáner activo — apunte al QR del pallet.")
-            foto_qr = st.camera_input(
-                "Cámara — QR de pallet",
-                key=f"camera_escaneo_qr_{st.session_state['camera_qr_token']}",
-            )
-            if st.button("Apagar cámara", key="btn_apagar_camara_qr"):
-                _apagar_camara_qr()
-                st.rerun()
-
-            if foto_qr is not None:
-                try:
-                    with st.spinner("Decodificando QR y consultando Supabase…"):
-                        resultado_qr = funciones.procesar_escaneo_qr_camara(foto_qr.getvalue())
-                    st.session_state["ultimo_resultado_qr"] = resultado_qr
-                except Exception as e:
-                    st.session_state["ultimo_resultado_qr"] = {
-                        "verificado": False,
-                        "tipo_ui": "error",
-                        "mensaje_ui": f"Error en escaneo QR: {e}",
-                    }
-                _apagar_camara_qr()
-                st.rerun()
-
-        st.markdown("---")
-        st.caption("O sin cámara")
-        texto_qr_manual = st.text_input(
-            "Hash / lote / texto QR:",
-            placeholder='{"lote":"L-001","hash_sha256":"abc…"}  ·  lote|hash',
-            key="texto_manual_qr_pallet",
-        )
-        if st.button("Buscar pallet en Supabase", key="btn_qr_lookup"):
-            if not (texto_qr_manual or "").strip():
-                st.warning("Escriba el texto del QR, hash o lote.")
-            else:
-                ok_in, txt_ok = firewall.validar_entrada_operativa(texto_qr_manual.strip())
-                if not ok_in:
-                    st.error(f"Cortafuego: {txt_ok}")
-                else:
-                    try:
-                        st.session_state["ultimo_resultado_qr"] = funciones.validar_pallet_por_qr(
-                            texto_qr=txt_ok
-                        )
-                        st.rerun()
-                    except Exception as e:
-                        st.error(f"Error: {e}")
-
-    with col_q_form:
-        _mod_sub("Respaldo y resultado")
-        img_qr_upload = st.file_uploader(
-            "Subir foto del QR",
-            type=["png", "jpg", "jpeg", "webp"],
-            key="upload_foto_qr_pallet",
-        )
-        if st.button("Validar foto en Supabase", key="btn_validar_qr_respaldo"):
-            if img_qr_upload is None:
-                st.warning("Suba una imagen del QR.")
-            else:
-                imagen_bytes = img_qr_upload.getvalue()
-                ok_img, msg_img = firewall.validar_upload_bytes(img_qr_upload.name, imagen_bytes)
-                if not ok_img:
-                    st.error(f"Cortafuego: {msg_img}")
-                else:
-                    try:
-                        st.session_state["ultimo_resultado_qr"] = (
-                            funciones.procesar_escaneo_qr_camara(imagen_bytes)
-                        )
-                        st.rerun()
-                    except Exception as e:
-                        st.error(f"Error: {e}")
-
-        resultado_qr_ui = st.session_state.get("ultimo_resultado_qr")
-        if resultado_qr_ui:
-            if resultado_qr_ui.get("tipo_ui") == "success":
-                st.success(
-                    resultado_qr_ui.get("mensaje_ui")
-                    or "Pallet verificado de forma segura mediante QR en Supabase."
-                )
-            else:
-                st.error(
-                    resultado_qr_ui.get("mensaje_ui")
-                    or "ALERTA: no se pudo verificar el pallet contra Supabase."
-                )
-
-            payload_qr = resultado_qr_ui.get("payload") or {}
-            if payload_qr:
-                st.caption(
-                    f"Lote: `{payload_qr.get('lote') or 'N/D'}` · "
-                    f"Hash: `{(payload_qr.get('hash_sha256') or 'N/D')[:24]}"
-                    f"{'…' if payload_qr.get('hash_sha256') and len(payload_qr.get('hash_sha256') or '') > 24 else ''}`"
-                )
-            reg = resultado_qr_ui.get("registro")
-            if reg:
-                with st.expander("Registro en historial_reportes (Supabase)"):
-                    st.json(reg)
-            sb_qr = resultado_qr_ui.get("supabase") or {}
-            if sb_qr and not resultado_qr_ui.get("verificado"):
-                with st.expander("Detalle consulta Supabase"):
-                    st.write(sb_qr.get("mensaje"))
-                    st.caption(f"Endpoint: `{sb_qr.get('endpoint')}`")
-                    if sb_qr.get("filas") is not None:
-                        st.json(sb_qr.get("filas"))
-        else:
-            st.caption("Resultado del último escaneo aparecerá aquí.")
-
 # ─── Módulo 5: Contenedores (siempre visible, UX igual a Módulo 6) ────────────
 st.markdown("---")
 with st.container(border=True):
-    _mod_header(
-        "Aduanas · Reefer · Precintos",
-        "Módulo 5 — Contenedores, bookings y precintos",
+    st.markdown(
+        '<p class="sb-card-title">Aduanas · Reefer · Precintos</p>'
+        '<p class="sb-card-heading">Módulo 5 — Contenedores, bookings y precintos</p>',
+        unsafe_allow_html=True,
+    )
+    st.caption(
         "Escanee el QR del contenedor (o escriba booking / ISO 6346). "
         "Si no está en la base, use el formulario guiado y selle en un clic. "
-        "Cámara apagada por defecto (misma lógica que el Módulo 6).",
+        "Cámara apagada por defecto (misma lógica que el Módulo 6)."
     )
 
     col_c_scan, col_c_form = st.columns([1, 1])
 
     with col_c_scan:
-        _mod_sub("Escaneo rápido")
+        st.markdown(
+            '<p class="sb-card-title">Escaneo rápido</p>',
+            unsafe_allow_html=True,
+        )
         if not st.session_state["camara_cnt_activa"]:
             st.info("Lente apagado. Active el escáner solo para leer el QR del reefer.")
             if st.button(
@@ -1503,7 +1469,10 @@ with st.container(border=True):
                 )
 
     with col_c_form:
-        _mod_sub("Registro guiado (1 clic)")
+        st.markdown(
+            '<p class="sb-card-title">Registro guiado (1 clic)</p>',
+            unsafe_allow_html=True,
+        )
         booking_input = st.text_input(
             "Booking *",
             placeholder="BKG-998231",
@@ -1563,105 +1532,24 @@ with st.container(border=True):
         with st.expander(f"Contenedores registrados ({len(lista_cont_db)})"):
             st.dataframe(pd.DataFrame(lista_cont_db), width="stretch", hide_index=True)
 
-# ─── Módulo 4: Cadena de frío (siempre visible, mismo layout) ────────────────
-st.markdown("---")
+# ─── Carga de archivo y módulos 1–5 (lógica intacta) ─────────────────────────
 with st.container(border=True):
-    _mod_header(
-        "Pre-frío · Cámaras · Reefer",
-        "Módulo 4 — Control térmico de cadena de frío",
-        f"Rango comercial {producto_sel}: use los parámetros de planta. "
-        "Fuera de rango se registra igual y se muestra alerta roja.",
-    )
-    t_min_f_live, t_max_f_live = funciones.obtener_rango_frio_fruta(
-        producto_sel,
-        temp_min_override=temp_min_limite,
-        temp_max_override=temp_max_limite,
-    )
-    col_f_left, col_f_right = st.columns([1, 1])
-    with col_f_left:
-        _mod_sub("Captura de lectura")
-        camara_sel_live = st.selectbox(
-            "Cámara / túnel / reefer:",
-            [
-                "Pre-Cámara 01",
-                "Túnel de Enfriamiento 03",
-                "Cámara de Almacenamiento 05",
-                "Contenedor Reefer Puerto",
-            ],
-            key="frio_camara_live",
-        )
-        valor_temp_default_live = float(
-            max(t_min_f_live, min(float(limit_temp_default), t_max_f_live))
-        )
-        temp_actual_camara_live = st.number_input(
-            "Temperatura registrada (°C):",
-            value=valor_temp_default_live,
-            step=0.5,
-            format="%.1f",
-            key="frio_temp_live",
-        )
-        st.caption(f"Rango: **{t_min_f_live} °C** – **{t_max_f_live} °C**")
-    with col_f_right:
-        _mod_sub("Validar y registrar (1 clic)")
-        prev_live = funciones.validar_temperatura_fruta(
-            temp_actual_camara_live,
-            producto_sel,
-            temp_min_override=t_min_f_live,
-            temp_max_override=t_max_f_live,
-        )
-        if prev_live["en_rango"]:
-            st.success(
-                f"En rango ({prev_live['temp_min']}–{prev_live['temp_max']} °C) · "
-                f"lectura {prev_live['temperatura']} °C"
-            )
-        else:
-            st.error(
-                f"Fuera de rango ({prev_live['temp_min']}–{prev_live['temp_max']} °C) · "
-                f"lectura {prev_live['temperatura']} °C"
-            )
-        if st.button("Registrar lectura de frío", type="primary", key="btn_frio_live"):
-            try:
-                resultado_frio = funciones.registrar_control_frio(
-                    camara=camara_sel_live,
-                    temperatura=float(temp_actual_camara_live),
-                    producto=producto_sel,
-                    inspector=auditor_nombre,
-                    temp_min_override=t_min_f_live,
-                    temp_max_override=t_max_f_live,
-                )
-                if resultado_frio["tipo_ui"] == "success":
-                    st.success(resultado_frio["mensaje_ui"])
-                else:
-                    st.error(resultado_frio["mensaje_ui"])
-                sb_f = resultado_frio.get("supabase") or {}
-                if sb_f.get("ok"):
-                    st.caption(f"Supabase control_frio: {sb_f.get('mensaje')}")
-                elif sb_f.get("configurado") is False:
-                    st.caption("Supabase no configurado (solo SQLite).")
-                elif sb_f:
-                    st.warning(sb_f.get("mensaje") or "Error remoto control_frio")
-            except Exception as e:
-                st.error(e)
-
-    historial_frio_live = funciones.cargar_frio_db()
-    if historial_frio_live:
-        with st.expander(f"Historial de frío ({len(historial_frio_live)})"):
-            st.dataframe(pd.DataFrame(historial_frio_live), width="stretch", hide_index=True)
-
-# ─── Carga de archivo y módulos 1–3 / packing ─────────────────────────────────
-with st.container(border=True):
-    _mod_header(
-        "Recepción / empaque",
-        "Cargar base de datos (Excel o CSV)",
-        f"Formatos .xlsx · .csv · cortafuego máx. "
-        f"{firewall.politica()['max_upload_bytes'] // (1024 * 1024)} MB. "
-        "Habilita módulos 1–3 y packing list.",
+    st.markdown(
+        """
+        <p class="sb-card-title">Recepción / empaque</p>
+        <p class="sb-card-heading">Cargar base de datos (Excel o CSV)</p>
+        """,
+        unsafe_allow_html=True,
     )
     archivo = st.file_uploader(
         "Archivo de recepción o packing list",
         type=["xlsx", "csv"],
         label_visibility="collapsed",
         key="uploader_recepcion_empaque",
+    )
+    st.caption(
+        f"Formatos: .xlsx · .csv · cortafuego máx. "
+        f"{firewall.politica()['max_upload_bytes'] // (1024 * 1024)} MB."
     )
 
 if archivo is not None:
@@ -1767,577 +1655,512 @@ if archivo is not None:
             unsafe_allow_html=True,
         )
 
-        # MÓDULO 1 — balanza + SSCC
-        with st.container(border=True):
-            _mod_header(
-                "Balanza · SSCC · GS1-128",
-                "Módulo 1 — Pesaje y lectura de pallets",
-                "Registre el peso de balanza en la última fila o busque un SSCC / caja en el archivo.",
-            )
-            col_b1, col_b2 = st.columns(2)
-            with col_b1:
-                _mod_sub("Captura de balanza")
-                st.info("El peso se escribe en la última fila de la columna PESO del archivo cargado.")
-                peso_capturado = st.number_input(
-                    "Peso neto capturado (kg):",
-                    value=4.5,
-                    step=0.1,
-                    key="mod1_peso_balanza",
-                )
-                if st.button("Registrar peso en última fila", type="primary", key="btn_mod1_peso"):
-                    df_nuevo, ok_peso, col_peso_usada = funciones.registrar_peso_ultima_fila(
-                        df_original, peso_capturado
+        # MÓDULO 1
+        st.markdown("---")
+        st.markdown("### 🔌 Módulo 1: Conexión de Balanza y Lectura Rápida de Pallets (SSCC)")
+        col_b1, col_b2 = st.columns(2)
+        with col_b1:
+            st.info("⚡ **Balanza en línea:** el peso se escribe en la última fila de la columna PESO del archivo cargado.")
+            peso_capturado = st.number_input("Peso Neto capturado desde Balanza (kg):", value=4.5, step=0.1)
+            if st.button("📥 Registrar Peso en Última Fila"):
+                df_nuevo, ok_peso, col_peso_usada = funciones.registrar_peso_ultima_fila(df_original, peso_capturado)
+                if ok_peso:
+                    st.session_state["df_trabajo"] = df_nuevo
+                    df_original = df_nuevo
+                    funciones.guardar_cambio_db(
+                        datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                        len(df_original) - 1,
+                        col_peso_usada,
+                        "(balanza)",
+                        str(peso_capturado),
+                        auditor_nombre,
                     )
-                    if ok_peso:
-                        st.session_state["df_trabajo"] = df_nuevo
-                        df_original = df_nuevo
-                        funciones.guardar_cambio_db(
-                            datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                            len(df_original) - 1,
-                            col_peso_usada,
-                            "(balanza)",
-                            str(peso_capturado),
-                            auditor_nombre,
-                        )
-                        st.success(
-                            f"Peso de {peso_capturado} kg registrado (columna `{col_peso_usada}`)."
-                        )
-                        st.rerun()
+                    st.success(f"Peso de {peso_capturado} kg registrado en la última fila (columna `{col_peso_usada}`).")
+                    st.rerun()
+                else:
+                    st.error("No se encontró una columna de PESO en el archivo, o el archivo está vacío.")
+        with col_b2:
+            st.info("🔫 **Lector GS1-128 / SSCC:** busca el código en el archivo cargado (CAJA, SSCC, PALLET, CODIGO, LOTE).")
+            sscc_input = st.text_input("Escanear Código SSCC o Caja:", placeholder="Ej: 077512345678901234")
+            if sscc_input:
+                df_sscc = funciones.buscar_registros_por_codigo(df_original, sscc_input)
+                if df_sscc.empty:
+                    st.error(f"Código `{sscc_input}` no encontrado en la base cargada.")
+                else:
+                    st.success(f"Unidad encontrada: **{sscc_input}** ({len(df_sscc)} registro(s))")
+                    st.dataframe(df_sscc, width="stretch", hide_index=True)
+
+        # MÓDULO 2
+        st.markdown("---")
+        st.markdown("### 🧪 Módulo 2: Control de Límites Máximos de Residuos (LMR) y Certificación SENASA")
+        lotes_disponibles = []
+        if cols_traza["lote"]:
+            lotes_disponibles = sorted(
+                [x for x in df_original[cols_traza["lote"]].astype(str).str.strip().unique() if x and x != "nan"]
+            )
+        lote_default = lotes_disponibles[0] if lotes_disponibles else ""
+        col_mle1, col_mle2, col_mle3 = st.columns(3)
+        with col_mle1:
+            if lotes_disponibles:
+                lote_lmr_sel = st.selectbox("Lote a consultar LMR:", options=lotes_disponibles, index=0)
+            else:
+                lote_lmr_sel = st.text_input("Ingrese Lote a Consultar LMR:", value=lote_default, placeholder="Ej: LOTE-001")
+        with col_mle2:
+            analisis_lab = st.selectbox(
+                "Resultado de laboratorio (manual / respaldo):",
+                ["Usar dato del archivo", "Conforme (Bajo LMR)", "Alerta (Cercano al Límite)", "Rechazado (Supera LMR)"],
+            )
+        with col_mle3:
+            estado_lmr = "sin_dato"
+            detalle_lmr = "Sin lote consultado"
+            df_lote_lmr = pd.DataFrame()
+            if lote_lmr_sel:
+                df_lote_lmr = funciones.buscar_registros_por_codigo(df_original, lote_lmr_sel)
+                if cols_traza["lote"] and df_lote_lmr.empty:
+                    mask_lote = df_original[cols_traza["lote"]].astype(str).str.strip().str.fullmatch(
+                        str(lote_lmr_sel).strip(), case=False, na=False
+                    )
+                    df_lote_lmr = df_original.loc[mask_lote].copy()
+
+                if analisis_lab != "Usar dato del archivo":
+                    if "Conforme" in analisis_lab:
+                        estado_lmr = "conforme"
+                    elif "Alerta" in analisis_lab:
+                        estado_lmr = "alerta"
                     else:
-                        st.error("No se encontró columna de PESO, o el archivo está vacío.")
-            with col_b2:
-                _mod_sub("Búsqueda SSCC / caja")
-                st.info("Busca en CAJA, SSCC, PALLET, CODIGO o LOTE del archivo.")
-                sscc_input = st.text_input(
-                    "Código SSCC o caja:",
-                    placeholder="Ej: 077512345678901234",
-                    key="mod1_sscc",
-                )
-                if sscc_input:
-                    df_sscc = funciones.buscar_registros_por_codigo(df_original, sscc_input)
-                    if df_sscc.empty:
-                        st.error(f"Código `{sscc_input}` no encontrado en la base cargada.")
-                    else:
-                        st.success(f"Unidad encontrada: **{sscc_input}** ({len(df_sscc)} registro(s))")
-                        st.dataframe(df_sscc, width="stretch", hide_index=True)
-
-        # MÓDULO 2 — LMR / SENASA
-        with st.container(border=True):
-            _mod_header(
-                "SENASA · LMR · Laboratorio",
-                "Módulo 2 — Límites máximos de residuos",
-                "Consulte el lote en el archivo o indique el veredicto de laboratorio y vea el estado de destino.",
-            )
-            lotes_disponibles = []
-            if cols_traza["lote"]:
-                lotes_disponibles = sorted(
-                    [
-                        x
-                        for x in df_original[cols_traza["lote"]].astype(str).str.strip().unique()
-                        if x and x != "nan"
-                    ]
-                )
-            lote_default = lotes_disponibles[0] if lotes_disponibles else ""
-            col_mle1, col_mle2 = st.columns(2)
-            with col_mle1:
-                _mod_sub("Consulta de lote")
-                if lotes_disponibles:
-                    lote_lmr_sel = st.selectbox(
-                        "Lote a consultar LMR:",
-                        options=lotes_disponibles,
-                        index=0,
-                        key="mod2_lote",
-                    )
+                        estado_lmr = "rechazado"
+                    detalle_lmr = analisis_lab
+                elif not df_lote_lmr.empty and cols_traza["lmr"]:
+                    valores_lmr = df_lote_lmr[cols_traza["lmr"]].astype(str).str.strip()
+                    estados = [funciones.interpretar_estado_lmr(v) for v in valores_lmr if v and v != "nan"]
+                    if "rechazado" in estados:
+                        estado_lmr = "rechazado"
+                    elif "alerta" in estados:
+                        estado_lmr = "alerta"
+                    elif "conforme" in estados:
+                        estado_lmr = "conforme"
+                    detalle_lmr = ", ".join(sorted(set(valores_lmr.head(5))))
+                elif df_lote_lmr.empty:
+                    detalle_lmr = "Lote no encontrado en archivo"
                 else:
-                    lote_lmr_sel = st.text_input(
-                        "Lote a consultar LMR:",
-                        value=lote_default,
-                        placeholder="Ej: LOTE-001",
-                        key="mod2_lote_txt",
-                    )
-                analisis_lab = st.selectbox(
-                    "Resultado de laboratorio:",
-                    [
-                        "Usar dato del archivo",
-                        "Conforme (Bajo LMR)",
-                        "Alerta (Cercano al Límite)",
-                        "Rechazado (Supera LMR)",
-                    ],
-                    key="mod2_lab",
-                )
-            with col_mle2:
-                _mod_sub("Veredicto SENASA / destino")
-                estado_lmr = "sin_dato"
-                detalle_lmr = "Sin lote consultado"
-                df_lote_lmr = pd.DataFrame()
-                if lote_lmr_sel:
-                    df_lote_lmr = funciones.buscar_registros_por_codigo(df_original, lote_lmr_sel)
-                    if cols_traza["lote"] and df_lote_lmr.empty:
-                        mask_lote = (
-                            df_original[cols_traza["lote"]]
-                            .astype(str)
-                            .str.strip()
-                            .str.fullmatch(str(lote_lmr_sel).strip(), case=False, na=False)
-                        )
-                        df_lote_lmr = df_original.loc[mask_lote].copy()
+                    detalle_lmr = "Lote hallado, sin columna LMR; use el selector manual"
 
-                    if analisis_lab != "Usar dato del archivo":
-                        if "Conforme" in analisis_lab:
-                            estado_lmr = "conforme"
-                        elif "Alerta" in analisis_lab:
-                            estado_lmr = "alerta"
-                        else:
-                            estado_lmr = "rechazado"
-                        detalle_lmr = analisis_lab
-                    elif not df_lote_lmr.empty and cols_traza["lmr"]:
-                        valores_lmr = df_lote_lmr[cols_traza["lmr"]].astype(str).str.strip()
-                        estados = [
-                            funciones.interpretar_estado_lmr(v)
-                            for v in valores_lmr
-                            if v and v != "nan"
-                        ]
-                        if "rechazado" in estados:
-                            estado_lmr = "rechazado"
-                        elif "alerta" in estados:
-                            estado_lmr = "alerta"
-                        elif "conforme" in estados:
-                            estado_lmr = "conforme"
-                        detalle_lmr = ", ".join(sorted(set(valores_lmr.head(5))))
-                    elif df_lote_lmr.empty:
-                        detalle_lmr = "Lote no encontrado en archivo"
-                    else:
-                        detalle_lmr = "Lote hallado, sin columna LMR; use el selector manual"
+            if estado_lmr == "conforme":
+                st.success(f"🟢 **SENASA / Destino:** APROBADO — {detalle_lmr}")
+            elif estado_lmr == "alerta":
+                st.warning(f"🟡 **SENASA / Destino:** EN CUARENTENA — {detalle_lmr}")
+            elif estado_lmr == "rechazado":
+                st.error(f"🔴 **SENASA / Destino:** BLOQUEADO DE PLANTA — {detalle_lmr}")
+            else:
+                st.info(f"ℹ️ **SENASA / Destino:** Sin veredicto automático — {detalle_lmr}")
 
-                if estado_lmr == "conforme":
-                    st.success(f"APROBADO — {detalle_lmr}")
-                elif estado_lmr == "alerta":
-                    st.warning(f"EN CUARENTENA — {detalle_lmr}")
-                elif estado_lmr == "rechazado":
-                    st.error(f"BLOQUEADO DE PLANTA — {detalle_lmr}")
-                else:
-                    st.info(f"Sin veredicto automático — {detalle_lmr}")
+        if lote_lmr_sel and not df_lote_lmr.empty:
+            with st.expander(f"Registros del lote `{lote_lmr_sel}` ({len(df_lote_lmr)})"):
+                st.dataframe(df_lote_lmr, width="stretch", hide_index=True)
 
-            if lote_lmr_sel and not df_lote_lmr.empty:
-                with st.expander(f"Registros del lote `{lote_lmr_sel}` ({len(df_lote_lmr)})"):
-                    st.dataframe(df_lote_lmr, width="stretch", hide_index=True)
-
-        # MÓDULO 3 — trazabilidad inversa
-        with st.container(border=True):
-            _mod_header(
-                "Fundo · Cosecha · Packing",
-                "Módulo 3 — Trazabilidad inversa",
-                "Ingrese caja, pallet o SSCC y obtenga el árbol de origen en un clic.",
+        # MÓDULO 3
+        st.markdown("---")
+        st.markdown("### 🗺️ Módulo 3: Trazabilidad Inversa (De Caja o Pallet al Fundo de Origen)")
+        col_inv1, col_inv2 = st.columns([2, 3])
+        with col_inv1:
+            caja_busqueda_inversa = st.text_input(
+                "🔍 Ingrese ID de Caja o Pallet para Trazabilidad Inversa:",
+                placeholder="Ej: CJ-9842 / SSCC / LOTE",
             )
-            col_inv1, col_inv2 = st.columns([1, 1])
-            with col_inv1:
-                _mod_sub("Búsqueda")
-                caja_busqueda_inversa = st.text_input(
-                    "ID de caja o pallet:",
-                    placeholder="Ej: CJ-9842 / SSCC / LOTE",
-                    key="mod3_caja",
-                )
-                cols_detectadas = [f"`{v}` ({k})" for k, v in cols_traza.items() if v]
-                if cols_detectadas:
-                    st.caption("Columnas detectadas: " + ", ".join(cols_detectadas[:8]))
-                else:
-                    st.caption("Sin columnas típicas; se buscará en todo el archivo.")
-            with col_inv2:
-                _mod_sub("Árbol de origen")
-                if caja_busqueda_inversa:
-                    df_traza = funciones.buscar_registros_por_codigo(
-                        df_original, caja_busqueda_inversa
-                    )
-                    if df_traza.empty:
-                        st.error(
-                            f"No se encontró trazabilidad para `{caja_busqueda_inversa}`."
-                        )
-                    else:
-                        arbol = funciones.armar_arbol_trazabilidad(
-                            df_traza.iloc[0],
-                            cols_traza,
-                            auditor_nombre,
-                            caja_busqueda_inversa,
-                        )
-                        st.success(f"Código `{arbol['codigo']}` · {len(df_traza)} coincidencia(s)")
-                        st.markdown(
-                            f"""
-- **Fundo / Parcela:** {arbol['fundo']}
-- **Productor:** {arbol['productor']}
-- **Lote:** {arbol['lote']}
-- **Cosecha:** {arbol['cosecha']}
-- **Turno / línea:** {arbol['turno']}
-- **Peso / Calibre:** {arbol['peso']} / {arbol['calibre']}
-- **LMR en archivo:** {arbol['lmr']}
-- **Inspector:** {arbol['inspector']}
-"""
-                        )
-                        if len(df_traza) > 1:
-                            st.dataframe(df_traza, width="stretch", hide_index=True)
-                else:
-                    st.caption("Resultado de trazabilidad aparecerá aquí.")
-
-        # MÓDULO 4 y 5 (paneles globales arriba)
-        with st.container(border=True):
-            _mod_header(
-                "Cadena de frío y contenedores",
-                "Módulos 4 y 5 — paneles globales",
-                "El control de frío y el sellado de contenedores están siempre visibles "
-                "arriba del Excel (mismo diseño de dos columnas).",
-            )
-            col_ptr1, col_ptr2 = st.columns(2)
-            with col_ptr1:
-                st.info("**Módulo 4** — registre lecturas de cámara / reefer en el panel superior.")
-            with col_ptr2:
-                st.info("**Módulo 5** — escanee QR o selle booking / precintos en el panel superior.")
-            lista_cont_db = funciones.cargar_contenedores_db(30)
-            if lista_cont_db:
-                with st.expander(f"Contenedores en SQLite ({len(lista_cont_db)})"):
-                    st.dataframe(pd.DataFrame(lista_cont_db), width="stretch", hide_index=True)
-            historial_frio = funciones.cargar_frio_db()
-            if historial_frio:
-                with st.expander(f"Historial de frío ({len(historial_frio)})"):
-                    st.dataframe(pd.DataFrame(historial_frio), width="stretch", hide_index=True)
-
-        # Packing / auditoría
-        with st.container(border=True):
-            _mod_header(
-                "Packing list · Export",
-                "Selección de columnas y limpieza",
-                "Elija columnas, limpie datos y descargue el reporte de errores.",
-            )
-            todas_cols = list(df_original.columns)
-
-            default_cols = [
-                c
-                for c in todas_cols
-                if any(k in c.upper() for k in ["CAJA", "PESO", "LOTE", "CODIGO", "OBSERVACIONES", "OBSERV"])
-            ]
-            if not default_cols:
-                default_cols = todas_cols[: min(4, len(todas_cols))]
-
-            cols_elegidas = st.multiselect(
-                "Columnas del packing list y reporte final:",
-                options=todas_cols,
-                default=default_cols,
-                key="mod_export_cols",
-            )
-
-            df_export = df_original[cols_elegidas].copy() if cols_elegidas else df_original.copy()
-
-            _mod_sub("Limpieza y auditoría")
-            col_l1, col_l2, col_l3, col_l4 = st.columns([1, 1, 1, 1])
-            with col_l1:
-                if not st.session_state["lote_congelado"]:
-                    if st.button("Limpiar espacios", key="btn_limpieza_espacios"):
-                        df_original = df_original.map(
-                            lambda x: str(x).strip() if pd.notna(x) else ""
-                        )
-                        df_export = (
-                            df_original[cols_elegidas].copy()
-                            if cols_elegidas
-                            else df_original.copy()
-                        )
-                        st.session_state["df_trabajo"] = df_original
-                        st.success("Espacios eliminados.")
-            with col_l2:
-                if not st.session_state["lote_congelado"]:
-                    if st.button("Rellenar vacíos (-)", key="btn_llenar_vacios"):
-                        df_original = df_original.replace("", "-")
-                        df_export = (
-                            df_original[cols_elegidas].copy()
-                            if cols_elegidas
-                            else df_original.copy()
-                        )
-                        st.session_state["df_trabajo"] = df_original
-                        st.success("Vacíos reemplazados.")
-            with col_l3:
-                if st.button("Ver registros con vacíos", key="btn_ver_vacios"):
-                    st.session_state["mostrar_vacios"] = not st.session_state["mostrar_vacios"]
-            with col_l4:
-                mask_errores_gen = (df_original == "").any(axis=1)
-                col_peso_chk_aux = [c for c in df_original.columns if "PESO" in c.upper()]
-                if col_peso_chk_aux:
-                    pesos_num_aux = pd.to_numeric(df_original[col_peso_chk_aux[0]], errors="coerce")
-                    mask_errores_gen = mask_errores_gen | (pesos_num_aux < peso_min_caja)
-
-                df_solo_errores_dl = df_original[mask_errores_gen]
-                pdf_errores_buffer = funciones.generar_pdf_errores(
-                    df_solo_errores_dl, archivo.name, producto_sel, auditor_nombre
-                )
-
-                st.download_button(
-                    label="Descargar errores (PDF)",
-                    data=pdf_errores_buffer.getvalue(),
-                    file_name="Reporte_Errores_Planta.pdf",
-                    mime="application/pdf",
-                    key="dl_errores_pdf",
-                )
-
-            if st.session_state["mostrar_vacios"]:
-                st.warning("Mostrando filas con campos vacíos o incompletos.")
-                mask_vacios = (df_original == "").any(axis=1)
-                df_solo_vacios = df_original[mask_vacios]
-                if not df_solo_vacios.empty:
-                    st.dataframe(
-                        df_solo_vacios.style.map(funciones.resaltar_errores_celdas),
-                        use_container_width=True,
-                    )
-                else:
-                    st.success("No hay registros con celdas vacías en este archivo.")
-
-        with st.container(border=True):
-            _mod_header(
-                "Calidad · Estadísticas",
-                "Control de calidad y alertas del lote",
-                "KPIs del archivo activo y alertas de peso / merma.",
-            )
-
-            col_m1, col_m2, col_m3, col_m4 = st.columns(4)
-            col_pallet_chk = [c for c in df_original.columns if "PALLET" in c.upper()]
-            total_pallets = df_original[col_pallet_chk[0]].nunique() if col_pallet_chk else "N/D"
-
-            col_lote_chk = [c for c in df_original.columns if "LOTE" in c.upper()]
-            total_lotes = df_original[col_lote_chk[0]].nunique() if col_lote_chk else "N/D"
-
-            col_prod_chk = [c for c in df_original.columns if "PRODUCTOR" in c.upper()]
-            total_productores = (
-                df_original[col_prod_chk[0]].nunique() if col_prod_chk else "N/D"
-            )
-
-            with col_m1:
-                st.metric("Total Pallets (SSCC)", total_pallets)
-            with col_m2:
-                st.metric("Lotes en Proceso", total_lotes)
-            with col_m3:
-                st.metric("Productores Implicados", total_productores)
-            with col_m4:
-                st.metric("Duplicados Detectados", total_duplicados)
-
-            col_peso_chk = [c for c in df_original.columns if "PESO" in c.upper()]
-            if col_peso_chk:
-                pesos_num = pd.to_numeric(df_original[col_peso_chk[0]], errors="coerce")
-                cajas_livianas = (pesos_num < peso_min_caja).sum()
-                peso_promedio = round(pesos_num.mean(), 2) if not pesos_num.empty else 0
-                peso_std = round(pesos_num.std(), 2) if not pesos_num.empty else 0
-                st.info(
-                    f"Peso promedio del lote: **{peso_promedio} kg** · "
-                    f"Desv. estándar: **{peso_std} kg**"
-                )
-                if cajas_livianas > 0:
+            cols_detectadas = [f"`{v}` ({k})" for k, v in cols_traza.items() if v]
+            if cols_detectadas:
+                st.caption("Columnas detectadas: " + ", ".join(cols_detectadas[:8]))
+            else:
+                st.caption("No se detectaron columnas típicas de trazabilidad; se buscará en todo el archivo.")
+        with col_inv2:
+            if caja_busqueda_inversa:
+                df_traza = funciones.buscar_registros_por_codigo(df_original, caja_busqueda_inversa)
+                if df_traza.empty:
                     st.error(
-                        f"Alerta de pesaje: {cajas_livianas} registros bajo el mínimo "
-                        f"de {peso_min_caja} kg."
+                        f"No se encontró trazabilidad para `{caja_busqueda_inversa}`. "
+                        "Verifique que el ID exista en columnas CAJA, PALLET, SSCC, CODIGO o LOTE."
                     )
-
-            col1, col2 = st.columns(2)
-            with col1:
-                _mod_sub("Calibres")
-                col_calibre = [c for c in df_original.columns if "CALIBRE" in c.upper()]
-                if col_calibre:
-                    conteo_calibres = df_original[col_calibre[0]].value_counts().reset_index()
-                    conteo_calibres.columns = ["Calibre", "Cajas"]
-                    st.dataframe(conteo_calibres.T, use_container_width=True)
-                    st.bar_chart(conteo_calibres.set_index("Calibre"))
                 else:
-                    st.caption("Sin columna CALIBRE.")
-            with col2:
-                _mod_sub("Merma / categoría")
-                col_cat = [
-                    c
-                    for c in df_original.columns
-                    if "CATEGORIA" in c.upper() or "CAT" in c.upper()
-                ]
-                if col_cat:
-                    conteo_cat = df_original[col_cat[0]].value_counts()
-                    descarte = conteo_cat.get("DESCARTE", 0) + conteo_cat.get("MERMA", 0)
-                    porcentaje_merma = round((descarte / total_filas) * 100, 2)
+                    arbol = funciones.armar_arbol_trazabilidad(
+                        df_traza.iloc[0], cols_traza, auditor_nombre, caja_busqueda_inversa
+                    )
+                    st.markdown(
+                        f"""
+**Árbol genealógico de trazabilidad para `{arbol['codigo']}`**
 
-                    if porcentaje_merma > max_merma_permitida:
-                        st.error(
-                            f"Merma elevada: {porcentaje_merma}% "
-                            f"(límite {max_merma_permitida}%)."
-                        )
-                    else:
-                        st.success(f"Merma bajo control: {porcentaje_merma}%.")
-                else:
-                    st.caption("Sin columna CATEGORIA.")
+- **Fundo / Parcela:** {arbol['fundo']}
+- **Productor registrado:** {arbol['productor']}
+- **Lote de proceso:** {arbol['lote']}
+- **Fecha de cosecha:** {arbol['cosecha']}
+- **Turno / línea de packing:** {arbol['turno']}
+- **Peso / Calibre:** {arbol['peso']} / {arbol['calibre']}
+- **Estado LMR en archivo:** {arbol['lmr']}
+- **Inspector responsable:** {arbol['inspector']}
+- **Coincidencias:** {len(df_traza)} registro(s)
+"""
+                    )
+                    if len(df_traza) > 1:
+                        st.dataframe(df_traza, width="stretch", hide_index=True)
 
-        with st.container(border=True):
-            _mod_header(
-                "Ed25519 · Sello digital",
-                "Sello criptográfico ECC del lote",
-                "Firma el resumen del archivo con LLAVE_PRIVADA (modo real) y archiva hash en SQLite / Supabase.",
+        # MÓDULO 4
+        st.markdown("---")
+        st.markdown("### 🌡️ Módulo 4: Control Térmico de Cadena de Frío (Pre-frío y Contenedores)")
+        t_min_f, t_max_f = funciones.obtener_rango_frio_fruta(
+            producto_sel,
+            temp_min_override=temp_min_limite,
+            temp_max_override=temp_max_limite if producto_sel == "Personalizado" else temp_max_limite,
+        )
+        st.caption(
+            f"Rango óptimo comercial para **{producto_sel}**: "
+            f"{t_min_f} °C a {t_max_f} °C"
+        )
+
+        col_f1, col_f2, col_f3 = st.columns(3)
+        with col_f1:
+            camara_sel = st.selectbox(
+                "Cámara Frigorífica / Túnel:",
+                ["Pre-Cámara 01", "Túnel de Enfriamiento 03", "Cámara de Almacenamiento 05", "Contenedor Reefer Puerto"],
             )
-            resumen_datos = f"Auditoría de Planta - Cultivo: {producto_sel} - Fecha: {datetime.date.today()} - Registros: {total_filas}"
+        with col_f2:
+            valor_temp_default = float(
+                max(t_min_f, min(limit_temp_default, t_max_f))
+            )
+            temp_actual_camara = st.number_input(
+                "Temperatura Registrada (°C):",
+                value=valor_temp_default,
+                step=0.5,
+                format="%.1f",
+            )
+        with col_f3:
+            prev = funciones.validar_temperatura_fruta(
+                temp_actual_camara,
+                producto_sel,
+                temp_min_override=t_min_f,
+                temp_max_override=t_max_f,
+            )
+            if prev["en_rango"]:
+                st.success(
+                    f"✅ En rango ({prev['temp_min']}–{prev['temp_max']} °C) · "
+                    f"lectura {prev['temperatura']} °C"
+                )
+            else:
+                st.error(
+                    f"🚨 Fuera de rango ({prev['temp_min']}–{prev['temp_max']} °C) · "
+                    f"lectura {prev['temperatura']} °C"
+                )
+
+            if st.button("💾 Registrar lectura de frío"):
+                try:
+                    resultado_frio = funciones.registrar_control_frio(
+                        camara=camara_sel,
+                        temperatura=float(temp_actual_camara),
+                        producto=producto_sel,
+                        inspector=auditor_nombre,
+                        temp_min_override=t_min_f,
+                        temp_max_override=t_max_f,
+                    )
+                    if resultado_frio["tipo_ui"] == "success":
+                        st.success(resultado_frio["mensaje_ui"])
+                    else:
+                        st.error(resultado_frio["mensaje_ui"])
+
+                    if resultado_frio.get("sqlite_ok"):
+                        st.caption(resultado_frio.get("sqlite_msg", "Guardado en SQLite"))
+                    else:
+                        st.warning(resultado_frio.get("sqlite_msg", "Error SQLite"))
+
+                    sb_f = resultado_frio.get("supabase") or {}
+                    if sb_f.get("ok"):
+                        st.caption(f"☁️ Supabase control_frio: {sb_f.get('mensaje')}")
+                    elif sb_f.get("configurado") is False:
+                        st.caption("☁️ Supabase no configurado (solo local).")
+                    else:
+                        st.error(sb_f.get("mensaje") or "Error al enviar control_frio a Supabase")
+                except Exception as e:
+                    st.error(e)
+
+        historial_frio = funciones.cargar_frio_db()
+        if historial_frio:
+            with st.expander("Historial de control de frío (SQLite)"):
+                st.dataframe(pd.DataFrame(historial_frio), width="stretch", hide_index=True)
+
+        # MÓDULO 5 (versión embebida en flujo Excel — apunta al panel superior)
+        st.markdown("---")
+        st.markdown("### 🚢 Módulo 5: Contenedores y precintos")
+        st.info(
+            "Use el **panel Módulo 5** (arriba, siempre visible): escanear QR de contenedor, "
+            "buscar booking/ISO y **sellar en un clic** — igual de simple que el escaner del Módulo 6."
+        )
+        lista_cont_db = funciones.cargar_contenedores_db(30)
+        if lista_cont_db:
+            with st.expander(f"Contenedores en SQLite ({len(lista_cont_db)})"):
+                st.dataframe(pd.DataFrame(lista_cont_db), width="stretch", hide_index=True)
+
+        st.markdown("---")
+        st.markdown("### 1️⃣ Selección de Columnas para Exportar")
+        todas_cols = list(df_original.columns)
+
+        default_cols = [
+            c for c in todas_cols if any(k in c.upper() for k in ["CAJA", "PESO", "LOTE", "CODIGO", "OBServaciones"])
+        ]
+        if not default_cols:
+            default_cols = todas_cols[: min(4, len(todas_cols))]
+
+        cols_elegidas = st.multiselect(
+            "Selecciona las columnas que formarán parte del Packing List y Reporte Final:",
+            options=todas_cols,
+            default=default_cols,
+        )
+
+        df_export = df_original[cols_elegidas].copy() if cols_elegidas else df_original.copy()
+
+        st.markdown("### 2️⃣ Limpieza, Auditoría y Reporte Exclusivo de Errores")
+        col_l1, col_l2, col_l3, col_l4 = st.columns([1, 1, 1, 1])
+        with col_l1:
+            if not st.session_state["lote_congelado"]:
+                if st.button("🧹 Limpiar Espacios Ocultos"):
+                    df_original = df_original.map(lambda x: str(x).strip() if pd.notna(x) else "")
+                    df_export = df_original[cols_elegidas].copy() if cols_elegidas else df_original.copy()
+                    st.success("¡Espacios eliminados!")
+        with col_l2:
+            if not st.session_state["lote_congelado"]:
+                if st.button("📝 Rellenar Vacíos con (-)"):
+                    df_original = df_original.replace("", "-")
+                    df_export = df_original[cols_elegidas].copy() if cols_elegidas else df_original.copy()
+                    st.success("¡Vacíos reemplazados!")
+        with col_l3:
+            if st.button("🔍 Ver Registros con Vacíos"):
+                st.session_state["mostrar_vacios"] = not st.session_state["mostrar_vacios"]
+        with col_l4:
+            mask_errores_gen = (df_original == "").any(axis=1)
+            col_peso_chk_aux = [c for c in df_original.columns if "PESO" in c.upper()]
+            if col_peso_chk_aux:
+                pesos_num_aux = pd.to_numeric(df_original[col_peso_chk_aux[0]], errors="coerce")
+                mask_errores_gen = mask_errores_gen | (pesos_num_aux < peso_min_caja)
+            
+            df_solo_errores_dl = df_original[mask_errores_gen]
+            pdf_errores_buffer = funciones.generar_pdf_errores(df_solo_errores_dl, archivo.name, producto_sel, auditor_nombre)
+            
+            st.download_button(
+                label="📥 Descargar Solo Errores (PDF)",
+                data=pdf_errores_buffer.getvalue(),
+                file_name="Reporte_Errores_Planta.pdf",
+                mime="application/pdf",
+            )
+
+        if st.session_state["mostrar_vacios"]:
+            st.warning("⚠️ **Mostrando únicamente filas que contienen campos vacíos o incompletos:**")
+            mask_vacios = (df_original == "").any(axis=1)
+            df_solo_vacios = df_original[mask_vacios]
+            if not df_solo_vacios.empty:
+                st.dataframe(df_solo_vacios.style.map(funciones.resaltar_errores_celdas), use_container_width=True)
+            else:
+                st.success("¡Excelente! No hay registros con celdas vacías en este archivo.")
+
+        st.markdown("### 3️⃣ Control de Calidad, Estadísticas y Alertas")
+
+        col_m1, col_m2, col_m3, col_m4 = st.columns(4)
+        col_pallet_chk = [c for c in df_original.columns if "PALLET" in c.upper()]
+        total_pallets = df_original[col_pallet_chk[0]].nunique() if col_pallet_chk else "N/D"
+        
+        col_lote_chk = [c for c in df_original.columns if "LOTE" in c.upper()]
+        total_lotes = df_original[col_lote_chk[0]].nunique() if col_lote_chk else "N/D"
+
+        col_prod_chk = [c for c in df_original.columns if "PRODUCTOR" in c.upper()]
+        total_productores = df_original[col_prod_chk[0]].nunique() if col_prod_chk else "N/D"
+
+        with col_m1:
+            st.metric("Total Pallets (SSCC)", total_pallets)
+        with col_m2:
+            st.metric("Lotes en Proceso", total_lotes)
+        with col_m3:
+            st.metric("Productores Implicados", total_productores)
+        with col_m4:
+            st.metric("Duplicados Detectados", total_duplicados)
+
+        col_peso_chk = [c for c in df_original.columns if "PESO" in c.upper()]
+        if col_peso_chk:
+            pesos_num = pd.to_numeric(df_original[col_peso_chk[0]], errors="coerce")
+            cajas_livianas = (pesos_num < peso_min_caja).sum()
+            peso_promedio = round(pesos_num.mean(), 2) if not pesos_num.empty else 0
+            peso_std = round(pesos_num.std(), 2) if not pesos_num.empty else 0
+            st.info(f"📊 **Estadística de Pesaje:** Peso Promedio del Lote: **{peso_promedio} kg** | Desviación Estándar: **{peso_std} kg**")
+
+            if cajas_livianas > 0:
+                st.error(f"⚠️ **Alerta Crítica de Pesaje:** Se encontraron {cajas_livianas} registros por debajo del peso mínimo de {peso_min_caja} kg.")
+
+        col1, col2 = st.columns(2)
+        with col1:
+            col_calibre = [c for c in df_original.columns if "CALIBRE" in c.upper()]
+            if col_calibre:
+                conteo_calibres = df_original[col_calibre[0]].value_counts().reset_index()
+                conteo_calibres.columns = ["Calibre", "Cajas"]
+                st.write("📊 **Distribución de Calibres (Tabla):**")
+                st.dataframe(conteo_calibres.T, use_container_width=True)
+                st.write("📈 **Gráfico de Calibres:**")
+                st.bar_chart(conteo_calibres.set_index("Calibre"))
+
+        with col2:
+            col_cat = [c for c in df_original.columns if "CATEGORIA" in c.upper() or "CAT" in c.upper()]
+            if col_cat:
+                conteo_cat = df_original[col_cat[0]].value_counts()
+                descarte = conteo_cat.get("DESCARTE", 0) + conteo_cat.get("MERMA", 0)
+                porcentaje_merma = round((descarte / total_filas) * 100, 2)
+
+                if porcentaje_merma > max_merma_permitida:
+                    st.error(f"🚨 **Alerta de Merma Elevada:** {porcentaje_merma}% de descarte (Límite: {max_merma_permitida}%).")
+                else:
+                    st.success(f"✅ **Merma Bajo Control:** {porcentaje_merma}% de descarte.")
+
+        st.markdown("---")
+        st.markdown("### 🛡️ Módulo de Seguridad: Sello Criptográfico ECC del Lote")
+        resumen_datos = f"Auditoría de Planta - Cultivo: {producto_sel} - Fecha: {datetime.date.today()} - Registros: {total_filas}"
+
+        try:
+            # Reutilizar el mismo sello en reruns de Streamlit
+            cache_sello = st.session_state.get("cache_sello_ecc")
+            if (
+                not cache_sello
+                or cache_sello.get("mensaje") != resumen_datos
+                or cache_sello.get("archivo") != archivo.name
+                or cache_sello.get("algo") != "Ed25519"
+            ):
+                llave_publica, sello_digital = motor_planta.firmar_reporte_ecc(resumen_datos)
+                st.session_state["cache_sello_ecc"] = {
+                    "mensaje": resumen_datos,
+                    "archivo": archivo.name,
+                    "llave_publica": llave_publica,
+                    "sello_digital": sello_digital,
+                    "modo": motor_planta.modo_firma_activo(),
+                    "backend": motor_planta.motor_activo(),
+                    "algo": "Ed25519",
+                }
+            else:
+                llave_publica = cache_sello["llave_publica"]
+                sello_digital = cache_sello["sello_digital"]
+
+            modo = st.session_state["cache_sello_ecc"].get("modo") or motor_planta.modo_firma_activo()
+            backend = st.session_state["cache_sello_ecc"].get("backend") or motor_planta.motor_activo()
+            if modo == "real":
+                st.success(f"🔒 Sello real Ed25519 · secrets + backend `{backend}`")
+                if str(backend).startswith("python"):
+                    st.caption("Motor Rust no activo; fallback Python (cryptography / PyNaCl / ed25519).")
+            else:
+                st.warning(
+                    "🧪 Modo demo: no se pudo usar `st.secrets['LLAVE_PRIVADA']`. "
+                    "Se firmó con llave Ed25519 efímera."
+                )
+            st.code(f"Sello Digital (Firma ECC): {sello_digital}")
+            st.caption(f"Llave Pública de Verificación: {llave_publica}")
+            st.caption(f"Modo de firma: `{modo}` · Backend: `{backend}`")
+            st.caption(f"Diagnóstico: {motor_planta.diagnostico()}")
+
+            # Lote(s) detectados en el archivo
+            if cols_traza.get("lote"):
+                lotes_vals = [
+                    v for v in df_original[cols_traza["lote"]].astype(str).str.strip().unique()
+                    if v and v.lower() != "nan"
+                ]
+                if not lotes_vals:
+                    lote_reporte = "SIN-LOTE"
+                elif len(lotes_vals) <= 3:
+                    lote_reporte = ", ".join(lotes_vals)
+                else:
+                    lote_reporte = f"{lotes_vals[0]} … (+{len(lotes_vals) - 1} lotes)"
+            else:
+                lote_reporte = archivo.name
+
+            hash_reporte = funciones.calcular_hash_reporte(
+                resumen_datos, sello_digital, llave_publica
+            )
+            fecha_firma = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
             try:
-                # Reutilizar el mismo sello en reruns de Streamlit
-                cache_sello = st.session_state.get("cache_sello_ecc")
-                if (
-                    not cache_sello
-                    or cache_sello.get("mensaje") != resumen_datos
-                    or cache_sello.get("archivo") != archivo.name
-                    or cache_sello.get("algo") != "Ed25519"
-                ):
-                    llave_publica, sello_digital = motor_planta.firmar_reporte_ecc(resumen_datos)
-                    st.session_state["cache_sello_ecc"] = {
-                        "mensaje": resumen_datos,
-                        "archivo": archivo.name,
-                        "llave_publica": llave_publica,
-                        "sello_digital": sello_digital,
-                        "modo": motor_planta.modo_firma_activo(),
-                        "backend": motor_planta.motor_activo(),
-                        "algo": "Ed25519",
-                    }
-                else:
-                    llave_publica = cache_sello["llave_publica"]
-                    sello_digital = cache_sello["sello_digital"]
-
-                modo = st.session_state["cache_sello_ecc"].get("modo") or motor_planta.modo_firma_activo()
-                backend = st.session_state["cache_sello_ecc"].get("backend") or motor_planta.motor_activo()
-                if modo == "real":
-                    st.success(f"Sello real Ed25519 · secrets + backend `{backend}`")
-                    if str(backend).startswith("python"):
-                        st.caption(
-                            "Motor Rust no activo; fallback Python (cryptography / PyNaCl / ed25519)."
-                        )
-                else:
-                    st.warning(
-                        "Modo demo: no se pudo usar LLAVE_PRIVADA. "
-                        "Se firmó con llave Ed25519 efímera."
-                    )
-                st.code(f"Sello Digital (Firma ECC): {sello_digital}")
-                st.caption(f"Llave Pública de Verificación: {llave_publica}")
-                st.caption(f"Modo de firma: `{modo}` · Backend: `{backend}`")
-                st.caption(f"Diagnóstico: {motor_planta.diagnostico()}")
-
-                if cols_traza.get("lote"):
-                    lotes_vals = [
-                        v
-                        for v in df_original[cols_traza["lote"]].astype(str).str.strip().unique()
-                        if v and v.lower() != "nan"
-                    ]
-                    if not lotes_vals:
-                        lote_reporte = "SIN-LOTE"
-                    elif len(lotes_vals) <= 3:
-                        lote_reporte = ", ".join(lotes_vals)
-                    else:
-                        lote_reporte = f"{lotes_vals[0]} … (+{len(lotes_vals) - 1} lotes)"
-                else:
-                    lote_reporte = archivo.name
-
-                hash_reporte = funciones.calcular_hash_reporte(
-                    resumen_datos, sello_digital, llave_publica
+                resultado_hist = funciones.guardar_reporte_historico(
+                    fecha_hora=fecha_firma,
+                    lote=lote_reporte,
+                    hash_sha256=hash_reporte,
+                    responsable=auditor_nombre,
+                    archivo=archivo.name,
+                    producto=producto_sel,
+                    registros=total_filas,
+                    firma_ecc=sello_digital,
+                    llave_publica=llave_publica,
+                    mensaje=resumen_datos,
+                    modo_firma=modo,
+                    backend=backend,
                 )
-                fecha_firma = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            except Exception as e:
+                st.error(e)
+                resultado_hist = {"guardado": False, "supabase_detalle": {}}
 
-                try:
-                    resultado_hist = funciones.guardar_reporte_historico(
-                        fecha_hora=fecha_firma,
+            st.session_state["ultimo_hash_reporte"] = hash_reporte
+            st.session_state["ultimo_supabase"] = resultado_hist.get("supabase_detalle") or {}
+
+            if resultado_hist.get("guardado"):
+                st.info(
+                    f"📂 Historial local: archivado (id `{resultado_hist.get('id')}`) · "
+                    f"Hash `{hash_reporte[:16]}…`"
+                )
+            elif resultado_hist.get("ya_existia"):
+                st.caption(
+                    f"📂 Historial local: sello ya registrado (hash `{hash_reporte[:16]}…`)"
+                )
+
+            # --- Envío explícito a Supabase (también reintenta si el guardado falló en remoto) ---
+            try:
+                sb = resultado_hist.get("supabase_detalle") or {}
+                # Reintento directo para forzar POST solo con fecha/lote/hash_sha256/inspector
+                if not sb.get("ok"):
+                    sb = funciones.enviar_sello_a_supabase(
+                        fecha=fecha_firma,
                         lote=lote_reporte,
                         hash_sha256=hash_reporte,
-                        responsable=auditor_nombre,
-                        archivo=archivo.name,
-                        producto=producto_sel,
-                        registros=total_filas,
-                        firma_ecc=sello_digital,
-                        llave_publica=llave_publica,
-                        mensaje=resumen_datos,
-                        modo_firma=modo,
-                        backend=backend,
+                        inspector=auditor_nombre,
                     )
-                except Exception as e:
-                    st.error(e)
-                    resultado_hist = {"guardado": False, "supabase_detalle": {}}
+                    st.session_state["ultimo_supabase"] = sb
 
-                st.session_state["ultimo_hash_reporte"] = hash_reporte
-                st.session_state["ultimo_supabase"] = resultado_hist.get("supabase_detalle") or {}
-
-                if resultado_hist.get("guardado"):
-                    st.info(
-                        f"Historial local: archivado (id `{resultado_hist.get('id')}`) · "
-                        f"Hash `{hash_reporte[:16]}…`"
-                    )
-                elif resultado_hist.get("ya_existia"):
-                    st.caption(
-                        f"Historial local: sello ya registrado (hash `{hash_reporte[:16]}…`)"
-                    )
-
-                try:
-                    sb = resultado_hist.get("supabase_detalle") or {}
-                    if not sb.get("ok"):
-                        sb = funciones.enviar_sello_a_supabase(
-                            fecha=fecha_firma,
-                            lote=lote_reporte,
-                            hash_sha256=hash_reporte,
-                            inspector=auditor_nombre,
+                if sb.get("ok"):
+                    if sb.get("ya_existia") or sb.get("status") == 409:
+                        st.info(
+                            "☁️ Supabase · sello **ya registrado** (hash único). "
+                            "No es un error — no se duplicó el registro."
                         )
-                        st.session_state["ultimo_supabase"] = sb
-
-                    if sb.get("ok"):
-                        if sb.get("ya_existia") or sb.get("status") == 409:
-                            st.info(
-                                "Supabase · sello ya registrado (hash único). "
-                                "No se duplicó el registro."
-                            )
-                        else:
-                            st.success(
-                                f"Supabase OK · historial_reportes · {sb.get('mensaje', '')}"
-                            )
-                        with st.expander("Detalle payload Supabase"):
-                            st.json(sb.get("payload") or {})
-                            st.caption(
-                                f"Endpoint: `{sb.get('endpoint')}` · HTTP {sb.get('status')}"
-                            )
                     else:
-                        msg = sb.get("mensaje") or "Error desconocido al insertar en Supabase"
-                        st.error(msg)
-                        with st.expander("Detalle del error Supabase"):
-                            st.write(f"Configurado: {sb.get('configurado')}")
-                            st.write(f"HTTP status: {sb.get('status')}")
-                            st.write(f"Endpoint: {sb.get('endpoint')}")
-                            st.json(sb.get("payload") or {})
-                except Exception as e:
-                    st.error(e)
-            except Exception as e:
-                llave_publica = "LLAVE_NO_DISPONIBLE"
-                sello_digital = "SELLO_NO_DISPONIBLE"
-                st.error(f"No se pudo generar el sello criptográfico: {e}")
-                st.caption(f"Diagnóstico: {motor_planta.diagnostico()}")
-
-        with st.container(border=True):
-            _mod_header(
-                "Turno · Edición · Cierre",
-                "Observaciones y cierre de lote",
-                "Busque, edite y congele el lote con checklist fitosanitario obligatorio.",
-            )
-            col_bus1, col_bus2, col_bus3 = st.columns(3)
-            with col_bus1:
-                texto_busqueda = st.text_input(
-                    "Búsqueda global (lote/contenedor):",
-                    key="obs_busqueda_global",
-                )
-            with col_bus2:
-                if col_prod_chk:
-                    lista_prod = ["TODOS"] + list(df_original[col_prod_chk[0]].unique())
-                    prod_filtro_sel = st.selectbox(
-                        "Filtrar por productor:",
-                        lista_prod,
-                        key="obs_prod_filtro",
-                    )
+                        st.success(
+                            f"☁️ Supabase OK · public.historial_reportes · {sb.get('mensaje', '')}"
+                        )
+                    with st.expander("Detalle payload Supabase"):
+                        st.json(sb.get("payload") or {})
+                        st.caption(f"Endpoint: `{sb.get('endpoint')}` · HTTP {sb.get('status')}")
                 else:
-                    prod_filtro_sel = "TODOS"
-            with col_bus3:
-                turno_sel = st.selectbox(
-                    "Turno de trabajo:",
-                    [
-                        "TODOS",
-                        "Mañana (06:00 - 14:00)",
-                        "Tarde (14:00 - 22:00)",
-                        "Noche (22:00 - 06:00)",
-                    ],
-                    key="obs_turno",
-                )
+                    msg = sb.get("mensaje") or "Error desconocido al insertar en Supabase"
+                    st.error(msg)
+                    with st.expander("Detalle del error Supabase"):
+                        st.write(f"Configurado: {sb.get('configurado')}")
+                        st.write(f"HTTP status: {sb.get('status')}")
+                        st.write(f"Endpoint: {sb.get('endpoint')}")
+                        st.json(sb.get("payload") or {})
+            except Exception as e:
+                st.error(e)
+        except Exception as e:
+            llave_publica = "LLAVE_NO_DISPONIBLE"
+            sello_digital = "SELLO_NO_DISPONIBLE"
+            st.error(f"No se pudo generar el sello criptográfico: {e}")
+            st.caption(f"Diagnóstico: {motor_planta.diagnostico()}")
+
+        st.markdown("### 4️⃣ Observaciones de Turno, Edición y Cierre")
+        col_bus1, col_bus2, col_bus3 = st.columns(3)
+        with col_bus1:
+            texto_busqueda = st.text_input("🔍 Búsqueda Global (Lote/Contenedor):")
+        with col_bus2:
+            if col_prod_chk:
+                lista_prod = ["TODOS"] + list(df_original[col_prod_chk[0]].unique())
+                prod_filtro_sel = st.selectbox("🎯 Filtrar por Productor:", lista_prod)
+            else:
+                prod_filtro_sel = "TODOS"
+        with col_bus3:
+            turno_sel = st.selectbox("🕒 Filtrar por Turno de Trabajo:", ["TODOS", "Mañana (06:00 - 14:00)", "Tarde (14:00 - 22:00)", "Noche (22:00 - 06:00)"])
 
         df_mostrar = df_export
         if texto_busqueda.strip() != "":
@@ -2399,54 +2222,35 @@ if archivo is not None:
                             auditor_nombre,
                         )
 
-        _mod_sub("Verificaciones fitosanitarias obligatorias")
-        chk_pulpa = st.checkbox(
-            "Se verificó la temperatura de pulpa y los límites máximos de residuos (LMR).",
-            key="chk_pulpa",
-        )
-        chk_cuerpo = st.checkbox(
-            "El lote se encuentra libre de materias extrañas y plagas cuarentenarias exigidas por SENASA.",
-            key="chk_cuerpo",
-        )
-
-        capa_texto = st.text_area(
-            "Registro CAPA / incidencias de turno:",
-            placeholder="Escribir observaciones generales de turno…",
-            key="capa_texto",
-        )
+        st.markdown("#### ✅ Verificaciones Fitosanitarias Obligatorias")
+        chk_pulpa = st.checkbox("Se verificó la temperatura de pulpa y los límites máximos de residuos (LMR).")
+        chk_cuerpo = st.checkbox("El lote se encuentra libre de materias extrañas y plagas cuarentenarias exigidas por SENASA.")
+        
+        capa_texto = st.text_area("📝 Registro General de Acciones Correctivas (CAPA) / Resumen de Incidencias:", placeholder="Escribir observaciones generales de turno...")
 
         col_c1, col_c2 = st.columns(2)
         with col_c1:
             if not st.session_state["lote_congelado"]:
-                if st.button(
-                    "Congelar y aprobar lote",
-                    type="primary",
-                    key="btn_congelar_lote",
-                ):
+                if st.button("🔒 Congelar y Aprobar Lote (Cierre Oficial)"):
                     if chk_pulpa and chk_cuerpo:
                         st.session_state["lote_congelado"] = True
-                        st.success("Lote aprobado y congelado.")
+                        st.success("¡Lote aprobado, firmado y congelado correctamente para gerencia!")
                         st.rerun()
                     else:
-                        st.error("Marque todas las verificaciones obligatorias antes de aprobar.")
+                        st.error("⚠️ Debe marcar todas las verificaciones del checklist obligatorio antes de aprobar el lote.")
             else:
-                if st.button("Descongelar lote (habilitar edición)", key="btn_descongelar"):
+                if st.button("🔓 Descongelar Lote (Habilitar Edición)"):
                     st.session_state["lote_congelado"] = False
                     st.warning("Lote habilitado para modificaciones.")
                     st.rerun()
 
         bitacora_db_data = funciones.cargar_bitacora_db()
         if bitacora_db_data:
-            with st.expander("Bitácora de auditoría (SQLite)"):
+            with st.expander("📜 Ver Bitácora de Auditoría Persistente (SQLite Audit Trail)"):
                 st.dataframe(pd.DataFrame(bitacora_db_data), use_container_width=True)
 
-        with st.container(border=True):
-            _mod_header(
-                "Packing list · PDF · Excel",
-                "Exportación de reportes oficiales",
-                "Descargue resumen, packing list y reportes con sello del lote activo.",
-            )
-            col_ex1, col_ex2, col_ex3 = st.columns(3)
+        st.markdown("### 5️⃣ Exportación de Reportes Oficiales")
+        col_ex1, col_ex2, col_ex3 = st.columns(3)
 
         with col_ex1:
             estado_lote = "CONGELADO / APROBADO" if st.session_state["lote_congelado"] else "EN REVISIÓN"
@@ -2535,22 +2339,18 @@ if archivo is not None:
                 mime="text/csv",
             )
 
-        with st.container(border=True):
-            _mod_header(
-                "Historial · sellos firmados",
-                "Reportes firmados en SQLite",
-                "Cada sello ECC se archiva con fecha, lote, hash SHA-256 y responsable. "
-                "Opcionalmente se replica a Supabase.",
-            )
-            historial_reportes = funciones.cargar_historial_reportes_db(200)
-            if historial_reportes:
-                st.dataframe(pd.DataFrame(historial_reportes), width="stretch", hide_index=True)
-                if st.session_state.get("ultimo_hash_reporte"):
-                    st.caption(
-                        f"Último hash de esta sesión: `{st.session_state['ultimo_hash_reporte']}`"
-                    )
-            else:
-                st.info("Aún no hay reportes archivados. Genere un sello ECC para el primer registro.")
+        st.markdown("### 6️⃣ Historial permanente de reportes firmados (SQLite)")
+        st.caption(
+            "Cada sello ECC exitoso se archiva con fecha, lote, hash SHA-256 y responsable. "
+            "Persiste en el servidor entre sleeps de la app; opcionalmente se replica a Supabase si configura secrets."
+        )
+        historial_reportes = funciones.cargar_historial_reportes_db(200)
+        if historial_reportes:
+            st.dataframe(pd.DataFrame(historial_reportes), width="stretch", hide_index=True)
+            if st.session_state.get("ultimo_hash_reporte"):
+                st.caption(f"Último hash de esta sesión: `{st.session_state['ultimo_hash_reporte']}`")
+        else:
+            st.info("Aún no hay reportes archivados. Genere un sello ECC para crear el primer registro.")
 
     except Exception as e:
         st.error(f"Ocurrió un error al procesar el archivo: {e}")
