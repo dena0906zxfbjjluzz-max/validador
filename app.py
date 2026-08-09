@@ -219,16 +219,119 @@ st.markdown(
         font-weight: 700 !important;
     }
     .sb-hero-meta { color: var(--sb-muted); font-size: 0.85rem; }
+
+    /* ── Navegación lateral (sidebar) ── */
+    [data-testid="stSidebar"] {
+        background-color: var(--sb-card) !important;
+        border-right: 1px solid var(--sb-border) !important;
+    }
+    [data-testid="stSidebar"] > div:first-child {
+        background-color: var(--sb-card) !important;
+        padding-top: 1rem;
+    }
+    [data-testid="stSidebar"] h1,
+    [data-testid="stSidebar"] h2,
+    [data-testid="stSidebar"] h3,
+    [data-testid="stSidebar"] p,
+    [data-testid="stSidebar"] label,
+    [data-testid="stSidebar"] span,
+    [data-testid="stSidebar"] .stMarkdown {
+        color: var(--sb-text) !important;
+    }
+    [data-testid="stSidebar"] [data-testid="stMarkdownContainer"] p {
+        color: var(--sb-muted) !important;
+    }
+    .sb-nav-label {
+        font-size: 0.72rem;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--sb-muted) !important;
+        font-weight: 600;
+        margin: 0 0 0.25rem 0;
+    }
+    .sb-nav-title {
+        font-size: 1.05rem !important;
+        font-weight: 700 !important;
+        color: var(--sb-text) !important;
+        margin: 0 0 0.85rem 0 !important;
+    }
+
+    /* Radio: quitar rojo por defecto y usar verde Supabase */
+    .stRadio label,
+    [data-testid="stSidebar"] .stRadio label,
+    div[data-baseweb="radio"] {
+        color: var(--sb-text) !important;
+    }
+    /* Círculo exterior del radio */
+    div[data-baseweb="radio"] > div:first-child {
+        background-color: transparent !important;
+        border-color: var(--sb-border) !important;
+    }
+    /* Radio seleccionado (BaseWeb) */
+    div[data-baseweb="radio"] input:checked + div,
+    div[role="radiogroup"] label[data-baseweb="radio"] > div:first-child {
+        background-color: var(--sb-green) !important;
+        border-color: var(--sb-green) !important;
+    }
+    /* Check mark / punto interior */
+    div[data-baseweb="radio"] svg {
+        fill: #0B0B0F !important;
+        color: #0B0B0F !important;
+    }
+    /* Fallback: borde y fill vía color del tema BaseWeb */
+    [data-testid="stSidebar"] div[role="radiogroup"] label {
+        background-color: #0E0E14 !important;
+        border: 1px solid var(--sb-border) !important;
+        border-radius: 10px !important;
+        padding: 0.55rem 0.7rem !important;
+        margin-bottom: 0.45rem !important;
+        transition: border-color 0.15s ease, background 0.15s ease;
+    }
+    [data-testid="stSidebar"] div[role="radiogroup"] label:hover {
+        border-color: #2E2E3A !important;
+        background-color: #15151E !important;
+    }
+    /* resaltar opción con el radio marcado */
+    [data-testid="stSidebar"] div[role="radiogroup"] label:has(input:checked) {
+        border-color: var(--sb-green) !important;
+        background-color: rgba(62, 207, 142, 0.08) !important;
+        box-shadow: 0 0 0 1px rgba(62, 207, 142, 0.25);
+    }
+
+    /* Primary / focus rings en verde en vez de rojo */
+    *:focus-visible {
+        outline-color: var(--sb-green) !important;
+    }
+    [data-baseweb="radio"] input:focus + div {
+        box-shadow: 0 0 0 2px rgba(62, 207, 142, 0.45) !important;
+        border-color: var(--sb-green) !important;
+    }
     </style>
     """,
     unsafe_allow_html=True,
 )
 
-st.sidebar.header("Navegación")
+st.sidebar.markdown(
+    """
+    <p class="sb-nav-label">Workspace</p>
+    <p class="sb-nav-title">Navegación</p>
+    """,
+    unsafe_allow_html=True,
+)
 modo_app = st.sidebar.radio(
     "Seleccione el módulo:",
     ["Planta / Packing (login)", "Verificación pública ECC"],
     index=0,
+    key="nav_modo_app",
+)
+st.sidebar.markdown(
+    """
+    <div style="margin-top:1rem;padding-top:0.85rem;border-top:1px solid #23232F;">
+      <span style="font-size:0.72rem;letter-spacing:0.06em;text-transform:uppercase;color:#9B9BA7;font-weight:600;">Estado</span>
+      <p style="margin:0.35rem 0 0 0;font-size:0.82rem;color:#3ECF8E;font-weight:600;">● Tema Supabase activo</p>
+    </div>
+    """,
+    unsafe_allow_html=True,
 )
 
 # ---------- MÓDULO PÚBLICO: verificación de PDF firmado (sin login) ----------

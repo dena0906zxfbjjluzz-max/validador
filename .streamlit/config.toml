@@ -1,0 +1,10 @@
+[theme]
+# Alineado con el dashboard tipo Supabase (sin rojo Streamlit por defecto)
+primaryColor = "#3ECF8E"
+backgroundColor = "#0B0B0F"
+secondaryBackgroundColor = "#12121A"
+textColor = "#EDEDEF"
+font = "sans serif"
+
+[server]
+headless = true
