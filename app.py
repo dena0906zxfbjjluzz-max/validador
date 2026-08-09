@@ -1884,18 +1884,6 @@ if archivo is not None:
             with st.expander("Historial de control de frío (SQLite)"):
                 st.dataframe(pd.DataFrame(historial_frio), width="stretch", hide_index=True)
 
-        # MÓDULO 5 (versión embebida en flujo Excel — apunta al panel superior)
-        st.markdown("---")
-        st.markdown("### 🚢 Módulo 5: Contenedores y precintos")
-        st.info(
-            "Use el **panel Módulo 5** (arriba, siempre visible): escanear QR de contenedor, "
-            "buscar booking/ISO y **sellar en un clic** — igual de simple que el escaner del Módulo 6."
-        )
-        lista_cont_db = funciones.cargar_contenedores_db(30)
-        if lista_cont_db:
-            with st.expander(f"Contenedores en SQLite ({len(lista_cont_db)})"):
-                st.dataframe(pd.DataFrame(lista_cont_db), width="stretch", hide_index=True)
-
         st.markdown("---")
         st.markdown("### 1️⃣ Selección de Columnas para Exportar")
         todas_cols = list(df_original.columns)
