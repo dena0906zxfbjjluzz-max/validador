@@ -6,7 +6,7 @@ Usar al **vender código + GitHub** o al poner la app en producción por primera
 
 - [ ] Repo GitHub accesible (o ZIP con historial Git)
 - [ ] Branch `main` estable (sin cambios locales sin commit)
-- [ ] Existe `README.md`, `INSTALACION.md`, `ENTREGA.md`
+- [ ] Existe `README.md`, `INSTALACION.md`, `ENTREGA.md`, `CONTRATO_TRASPASO.md`
 - [ ] Existe `supabase/schema.sql`
 - [ ] Existe `demo/packing_demo.csv`
 - [ ] Existe `.streamlit/secrets.toml.example` (sin contraseñas reales)
@@ -36,7 +36,7 @@ Usar al **vender código + GitHub** o al poner la app en producción por primera
 | Esquema Supabase | Soporte 24×7 sin contrato aparte |
 | | Capacitación presencial sin horas extras |
 
-**Precios, plazos y soporte** se define en cotización o contrato (no se publican en el repositorio).
+**Precios, plazos y soporte** se definen en cotización o en [CONTRATO_TRASPASO.md](CONTRATO_TRASPASO.md) (plantilla; no hay precio fijo en el repositorio).
 
 ## D. Firma de cierre
 
