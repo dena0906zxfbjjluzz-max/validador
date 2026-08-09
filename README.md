@@ -1,96 +1,68 @@
-# Validador de planta (v1)
+# 🏭 Validador de planta — Control de calidad, trazabilidad y packing (v1)
 
-App Streamlit de control de calidad, trazabilidad y packing (Perú).  
-Sello Ed25519 · SQLite · Supabase opcional.
+Suite AgTech de piso de empaque: Python (Streamlit) + sello Ed25519 (Rust/Python) + SQLite y Supabase opcional.
 
----
+**Estado:** producto **v1 cerrado** para entrega / uso / venta de código.  
+**Instalación:** [INSTALACION.md](INSTALACION.md) · checklist [ENTREGA.md](ENTREGA.md).
 
-## Instalar y correr
+## Módulos
 
-### 1. Código
+### 1 · Balanza y SSCC
+Registro de peso en la última fila PESO y búsqueda de SSCC/caja/pallet/lote en el archivo cargado.
+
+### 2 · LMR / SENASA
+Consulta de lote y veredicto de laboratorio / columna LMR del archivo.
+
+### 3 · Trazabilidad inversa
+De caja o pallet al fundo, productor, lote y turno (columnas detectadas del Excel/CSV).
+
+### 4 · Cadena de frío
+Lecturas de cámara/túnel/reefer con rangos por fruta; SQLite + Supabase `control_frio`.
+
+### 5 · Contenedores y precintos
+QR/booking/ISO 6346, formulario de sello, SQLite + Supabase `contenedores_despacho`.
+
+### 6 · QR pallet
+Cámara / foto / texto → consulta `historial_reportes` en Supabase.
+
+### Seguridad (cortafuego)
+Login con bloqueo, token de sesión, timeout, validación de uploads y bitácora local.
+
+### Sello Ed25519
+Firma de reportes con `LLAVE_PRIVADA` (secrets). Verificación pública de PDF sin login de planta.
+
+## Demo
+
+Archivo de prueba: [demo/packing_demo.csv](demo/packing_demo.csv) · [demo/packing_demo.xlsx](demo/packing_demo.xlsx)
+
+## Supabase
+
+Ejecutar [supabase/schema.sql](supabase/schema.sql) en el SQL Editor del proyecto.
+
+## Secrets
+
+Plantilla: [.streamlit/secrets.toml.example](.streamlit/secrets.toml.example)
+
+## Alcance v1
+
+| Incluido | No incluido en v1 |
+|----------|-------------------|
+| App completa de planta + PDF/CSV/Excel | Conector nativo SAP/Oracle |
+| Nube Supabase opcional | Balanza industrial por puerto serial plug-and-play |
+| Código en Git + guía de instalación | Secretos y base de datos del vendedor |
+
+Export CSV limpio usable para cargar en ERPs de forma manual o con integrador.
+
+## Arranque rápido
 
 ```bash
 git clone https://github.com/dena0906zxfbjjluzz-max/validador.git
 cd validador
-```
-
-### 2. Python
-
-```bash
-python -m venv .venv
-source .venv/bin/activate          # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
-```
-
-**WSL / Ubuntu** (cámara QR):
-
-```bash
-sudo apt-get update && sudo apt-get install -y libzbar0
-```
-
-### 3. Secrets
-
-```bash
 cp .streamlit/secrets.toml.example .streamlit/secrets.toml
-```
-
-Edite `.streamlit/secrets.toml` (no se sube a Git):
-
-| Campo | Uso |
-|--------|-----|
-| `usuario` / `clave` | Login de planta |
-| `LLAVE_PRIVADA` | Hex de **64** caracteres (firma real Ed25519) |
-| `nombre_planta` | Nombre en la app / PDF |
-| `SUPABASE_URL` / `SUPABASE_KEY` | Opcional (sin esto: solo SQLite local) |
-
-Generar llave de prueba:
-
-```bash
-python -c "import secrets; print(secrets.token_hex(32))"
-```
-
-### 4. Supabase (opcional)
-
-En el SQL Editor de su proyecto, ejecute: [`supabase/schema.sql`](supabase/schema.sql).  
-Copie URL y API key a secrets.
-
-### 5. Iniciar
-
-```bash
+# editar secrets.toml
 streamlit run app.py
 ```
 
-Abra la URL local (p. ej. `http://localhost:8501`).
-
-### 6. Probar
-
-1. Inicie sesión con su usuario/clave.  
-2. Cargue [`demo/packing_demo.csv`](demo/packing_demo.csv).  
-3. Use los módulos 1–6 según la pantalla.
-
-### Streamlit Cloud
-
-App → `app.py` del repo → **Secrets** con el mismo TOML de `[credenciales]`.  
-`packages.txt` instala `libzbar0` y Rust en Cloud.
-
----
-
-## Archivos útiles
-
-| Archivo | Para qué |
-|---------|----------|
-| [demo/packing_demo.csv](demo/packing_demo.csv) | Excel/CSV de prueba |
-| [supabase/schema.sql](supabase/schema.sql) | Tablas en la nube |
-| [.streamlit/secrets.toml.example](.streamlit/secrets.toml.example) | Plantilla de secrets |
-| [INSTALACION.md](INSTALACION.md) | Guía extendida (si la necesita) |
-| [ENTREGA.md](ENTREGA.md) | Checklist de entrega técnica |
-
-**No va en Git:** `secrets.toml` real, `*.db`, `.venv/`.
-
----
-
-## Módulos (resumen)
-
-1 Balanza/SSCC · 2 LMR · 3 Trazabilidad · 4 Frío · 5 Contenedores · 6 QR pallet · sello ECC · cortafuego · export PDF/Excel/CSV.
-
-v1 lista para uso / entrega de código.
+Detalle de instalación, secrets y Supabase: **[INSTALACION.md](INSTALACION.md)**.  
+Checklist de entrega: **[ENTREGA.md](ENTREGA.md)**.
