@@ -61,54 +61,78 @@ def cargar_credenciales_acceso() -> tuple[str | None, str | None, str | None]:
 if "autenticado" not in st.session_state:
     st.session_state["autenticado"] = False
 
-# Tema visual estilo dashboard (solo presentación; no altera lógica de negocio)
+# Tema visual: dashboard tipo home de Supabase, paleta Cadena de Frío (agroexport)
+# Acento teal frío de cámara reefer + sello oro de exportación (no verde SaaS genérico)
 st.markdown(
     """
     <style>
+    @import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,600;0,9..40,700;0,9..40,800;1,9..40,400&display=swap');
+
     :root {
-        --sb-bg: #0B0B0F;
-        --sb-card: #12121A;
-        --sb-border: #23232F;
-        --sb-green: #3ECF8E;
-        --sb-text: #EDEDEF;
-        --sb-muted: #9B9BA7;
+        --sb-bg: #060A10;
+        --sb-card: #0C1219;
+        --sb-card-2: #111925;
+        --sb-border: #1A2636;
+        --sb-border-soft: #243246;
+        --sb-accent: #2BB8A8;
+        --sb-accent-hot: #22A396;
+        --sb-accent-dim: rgba(43, 184, 168, 0.12);
+        --sb-gold: #D4A84B;
+        --sb-gold-dim: rgba(212, 168, 75, 0.14);
+        --sb-text: #EAF0F6;
+        --sb-muted: #8A9BB0;
+        --sb-input: #090E15;
+        --sb-green: var(--sb-accent);
+        --sb-radius: 12px;
     }
 
-    /* Fondo global */
+    html, body, .stApp, [data-testid="stAppViewContainer"], section.main {
+        font-family: "DM Sans", "Segoe UI", sans-serif !important;
+    }
+
+    /* Fondo con sutil malla (estilo overview Supabase) */
     .stApp,
     [data-testid="stAppViewContainer"],
     [data-testid="stHeader"],
     section.main {
         background-color: var(--sb-bg) !important;
+        background-image:
+            radial-gradient(ellipse 100% 60% at 50% -10%, rgba(43, 184, 168, 0.09), transparent 50%),
+            linear-gradient(rgba(26, 38, 54, 0.35) 1px, transparent 1px),
+            linear-gradient(90deg, rgba(26, 38, 54, 0.35) 1px, transparent 1px);
+        background-size: auto, 48px 48px, 48px 48px;
+        background-position: center, 0 0, 0 0;
         color: var(--sb-text);
+    }
+    [data-testid="stHeader"] {
+        background: rgba(6, 10, 16, 0.85) !important;
+        backdrop-filter: blur(8px);
     }
     [data-testid="stSidebar"],
     [data-testid="stSidebarContent"] {
         background-color: var(--sb-card) !important;
         border-right: 1px solid var(--sb-border);
     }
-    [data-testid="stToolbar"] {
-        background: transparent !important;
-    }
+    [data-testid="stToolbar"] { background: transparent !important; }
 
-    /* Rejilla / columnas: sin tarjeta global (los módulos 1–5 usan columns) */
     div[data-testid="stHorizontalBlock"] {
         gap: 1rem;
         align-items: stretch;
     }
 
-    /* Tarjetas CSS del shell (via st.container border) */
     div[data-testid="stVerticalBlockBorderWrapper"] {
-        background-color: var(--sb-card) !important;
+        background:
+            linear-gradient(180deg, rgba(43, 184, 168, 0.04), transparent 28%),
+            var(--sb-card) !important;
         border: 1px solid var(--sb-border) !important;
-        border-radius: 12px !important;
-        padding: 0.35rem 0.55rem 0.55rem 0.55rem !important;
-        box-shadow: 0 1px 0 rgba(255, 255, 255, 0.02);
+        border-radius: var(--sb-radius) !important;
+        padding: 0.45rem 0.65rem 0.7rem 0.65rem !important;
+        box-shadow: 0 1px 0 rgba(255, 255, 255, 0.03), 0 12px 40px rgba(0, 0, 0, 0.28);
     }
 
-    /* Tipografía y widgets en modo oscuro */
     h1, h2, h3, h4, p, label, span, .stMarkdown, .stCaption {
         color: var(--sb-text) !important;
+        font-family: "DM Sans", "Segoe UI", sans-serif !important;
     }
     .stCaption, [data-testid="stCaptionContainer"] {
         color: var(--sb-muted) !important;
@@ -118,53 +142,52 @@ st.markdown(
     .stNumberInput input,
     .stTextArea textarea,
     [data-baseweb="input"] {
-        background-color: #0E0E14 !important;
+        background-color: var(--sb-input) !important;
         color: var(--sb-text) !important;
         border-color: var(--sb-border) !important;
         border-radius: 8px !important;
     }
 
-    /* Botones base */
     .stButton > button {
-        background-color: #1C1C26;
+        background-color: var(--sb-card-2);
         color: var(--sb-text);
         border-radius: 8px;
         font-weight: 600;
         border: 1px solid var(--sb-border);
         padding: 0.5rem 1rem;
+        font-family: "DM Sans", sans-serif !important;
     }
     .stButton > button:hover {
-        background-color: #23232F;
+        background-color: #162030;
+        border-color: var(--sb-border-soft);
         color: white;
-        border-color: #2E2E3A;
     }
 
-    /* Botón verde Supabase (primary) */
     .stButton > button[kind="primary"],
     .stButton > button[data-testid="baseButton-primary"] {
-        background-color: var(--sb-green) !important;
-        color: #0B0B0F !important;
+        background: linear-gradient(180deg, #34C9B8 0%, var(--sb-accent) 100%) !important;
+        color: #04110F !important;
         border: none !important;
         font-weight: 700 !important;
         border-radius: 8px !important;
+        box-shadow: 0 0 0 1px rgba(43, 184, 168, 0.25), 0 8px 20px rgba(43, 184, 168, 0.18);
     }
     .stButton > button[kind="primary"]:hover,
     .stButton > button[data-testid="baseButton-primary"]:hover {
-        background-color: #35b87d !important;
-        color: #0B0B0F !important;
+        background: linear-gradient(180deg, #3FD4C3 0%, var(--sb-accent-hot) 100%) !important;
+        color: #04110F !important;
     }
 
-    /* Encabezados de tarjeta (HTML) */
     .sb-card-title {
-        font-size: 0.72rem;
-        letter-spacing: 0.08em;
+        font-size: 0.7rem;
+        letter-spacing: 0.1em;
         text-transform: uppercase;
         color: var(--sb-muted);
-        font-weight: 600;
-        margin: 0 0 0.35rem 0;
+        font-weight: 700;
+        margin: 0 0 0.3rem 0;
     }
     .sb-card-heading {
-        font-size: 1.05rem;
+        font-size: 1.08rem;
         font-weight: 700;
         color: var(--sb-text);
         margin: 0 0 0.75rem 0;
@@ -172,98 +195,199 @@ st.markdown(
     }
     .sb-pill {
         display: inline-block;
-        padding: 0.15rem 0.55rem;
-        border-radius: 999px;
-        font-size: 0.75rem;
-        font-weight: 600;
+        padding: 0.2rem 0.6rem;
+        border-radius: 6px;
+        font-size: 0.72rem;
+        font-weight: 700;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
         border: 1px solid var(--sb-border);
-        background: #0E0E14;
+        background: var(--sb-input);
         color: var(--sb-muted);
-        margin-bottom: 0.6rem;
+        margin: 0 0.3rem 0.55rem 0;
     }
     .sb-pill.ok {
-        color: #0B0B0F;
-        background: var(--sb-green);
+        color: #04110F;
+        background: var(--sb-accent);
+        border-color: transparent;
+    }
+    .sb-pill.gold {
+        color: #1A1406;
+        background: var(--sb-gold);
         border-color: transparent;
     }
     .sb-pill.warn {
-        color: #FBBF24;
+        color: #F5D07A;
         border-color: #3A3118;
-        background: #1A1608;
+        background: #151208;
     }
     .sb-status-row {
         display: flex;
         justify-content: space-between;
         gap: 0.5rem;
-        padding: 0.45rem 0;
+        padding: 0.48rem 0;
         border-bottom: 1px solid var(--sb-border);
         font-size: 0.85rem;
     }
     .sb-status-row span:first-child { color: var(--sb-muted); }
-    .sb-status-row span:last-child { color: var(--sb-text); font-weight: 600; text-align: right; word-break: break-all; }
+    .sb-status-row span:last-child {
+        color: var(--sb-text); font-weight: 600; text-align: right; word-break: break-all;
+    }
+
+    /* ── Hero tipo project overview ── */
     .sb-hero-bar {
+        position: relative;
+        margin-bottom: 1.25rem;
+        padding: 1.65rem 1.75rem 1.55rem 1.75rem;
+        background:
+            radial-gradient(ellipse 70% 120% at 0% 0%, rgba(43, 184, 168, 0.14), transparent 55%),
+            radial-gradient(ellipse 50% 80% at 100% 100%, rgba(212, 168, 75, 0.08), transparent 50%),
+            var(--sb-card);
+        border: 1px solid var(--sb-border);
+        border-radius: 14px;
+        box-shadow: 0 16px 48px rgba(0, 0, 0, 0.4);
+        overflow: hidden;
+    }
+    .sb-hero-bar::before {
+        content: "";
+        position: absolute;
+        inset: 0;
+        background-image:
+            linear-gradient(rgba(43, 184, 168, 0.04) 1px, transparent 1px),
+            linear-gradient(90deg, rgba(43, 184, 168, 0.04) 1px, transparent 1px);
+        background-size: 32px 32px;
+        pointer-events: none;
+        mask-image: linear-gradient(180deg, #000 0%, transparent 85%);
+    }
+    .sb-hero-crumbs {
+        position: relative;
         display: flex;
         flex-wrap: wrap;
         align-items: center;
+        gap: 0.45rem 0.55rem;
+        margin-bottom: 0.75rem;
+        font-size: 0.78rem;
+        color: var(--sb-muted) !important;
+        font-weight: 600;
+        letter-spacing: 0.02em;
+    }
+    .sb-hero-crumbs .dot { opacity: 0.45; }
+    .sb-tag-prod {
+        display: inline-flex;
+        align-items: center;
+        padding: 0.12rem 0.45rem;
+        border-radius: 4px;
+        font-size: 0.65rem;
+        font-weight: 800;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        background: var(--sb-gold-dim);
+        color: var(--sb-gold) !important;
+        border: 1px solid rgba(212, 168, 75, 0.35);
+    }
+    .sb-hero-top {
+        position: relative;
+        display: flex;
+        flex-wrap: wrap;
+        align-items: flex-start;
         justify-content: space-between;
-        gap: 0.75rem 1.25rem;
-        margin-bottom: 1.15rem;
-        padding: 1.4rem 1.55rem 1.5rem 1.55rem;
-        background:
-            radial-gradient(ellipse 80% 120% at 0% 0%, rgba(62, 207, 142, 0.16), transparent 55%),
-            radial-gradient(ellipse 55% 90% at 100% 80%, rgba(62, 207, 142, 0.07), transparent 50%),
-            var(--sb-card);
-        border: 1px solid var(--sb-border);
-        border-radius: 16px;
-        box-shadow: 0 10px 36px rgba(0, 0, 0, 0.38);
+        gap: 1rem 1.5rem;
     }
     .sb-hero-bar h1 {
-        font-size: clamp(1.85rem, 3.6vw, 2.65rem) !important;
-        margin: 0 0 0.4rem 0 !important;
+        font-size: clamp(2rem, 4.2vw, 3rem) !important;
+        margin: 0 0 0.45rem 0 !important;
         font-weight: 800 !important;
-        letter-spacing: -0.03em !important;
-        line-height: 1.12 !important;
-        background: linear-gradient(100deg, #FFFFFF 0%, #EDEDEF 32%, #3ECF8E 100%);
+        letter-spacing: -0.04em !important;
+        line-height: 1.05 !important;
+        background: linear-gradient(105deg, #FFFFFF 0%, #EAF0F6 40%, #2BB8A8 78%, #D4A84B 118%);
         -webkit-background-clip: text;
         background-clip: text;
         -webkit-text-fill-color: transparent;
         color: transparent !important;
     }
-    .sb-hero-meta { color: var(--sb-muted); font-size: 0.95rem; }
+    .sb-hero-meta {
+        position: relative;
+        color: var(--sb-muted);
+        font-size: 0.95rem;
+        max-width: 42rem;
+        line-height: 1.45;
+    }
     .sb-hero-badge {
+        position: relative;
         display: inline-flex;
         align-items: center;
-        gap: 0.4rem;
-        padding: 0.5rem 0.95rem;
-        border-radius: 999px;
-        border: 1px solid rgba(62, 207, 142, 0.4);
-        background: rgba(62, 207, 142, 0.12);
-        color: var(--sb-green) !important;
+        gap: 0.45rem;
+        padding: 0.55rem 1rem;
+        border-radius: 8px;
+        border: 1px solid rgba(43, 184, 168, 0.35);
+        background: var(--sb-accent-dim);
+        color: var(--sb-accent) !important;
         font-size: 0.84rem;
         font-weight: 700;
+        white-space: nowrap;
     }
+    .sb-status-grid {
+        position: relative;
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+        gap: 0.55rem;
+        margin-top: 1.15rem;
+    }
+    .sb-mini-card {
+        background: var(--sb-input);
+        border: 1px solid var(--sb-border);
+        border-radius: 10px;
+        padding: 0.65rem 0.75rem;
+        min-height: 4.2rem;
+    }
+    .sb-mini-card .k {
+        font-size: 0.65rem;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--sb-muted) !important;
+        font-weight: 700;
+        margin-bottom: 0.35rem;
+    }
+    .sb-mini-card .v {
+        font-size: 0.92rem;
+        font-weight: 700;
+        color: var(--sb-text) !important;
+        display: flex;
+        align-items: center;
+        gap: 0.35rem;
+    }
+    .sb-mini-card .v.ok { color: var(--sb-accent) !important; }
+    .sb-mini-card .v.gold { color: var(--sb-gold) !important; }
+    .sb-dot {
+        width: 0.45rem; height: 0.45rem; border-radius: 50%;
+        background: var(--sb-accent);
+        box-shadow: 0 0 0 3px rgba(43, 184, 168, 0.2);
+        display: inline-block;
+    }
+
     .sb-ops-banner {
         margin: 0.85rem 0 1rem 0;
-        padding: 1.05rem 1.2rem;
+        padding: 1.1rem 1.25rem;
         border-radius: 12px;
         border: 1px solid var(--sb-border);
-        background: linear-gradient(135deg, #12121A 0%, #0E1412 100%);
+        background:
+            radial-gradient(ellipse 60% 100% at 0% 50%, rgba(43, 184, 168, 0.1), transparent 60%),
+            var(--sb-card);
     }
-    /* Títulos de módulos operativos (tras subir Excel) */
     [data-testid="stMarkdownContainer"] h3 {
-        font-size: 1.2rem !important;
+        font-size: 1.18rem !important;
         font-weight: 700 !important;
         letter-spacing: -0.01em;
         margin: 0.35rem 0 0.85rem 0 !important;
         padding: 0.55rem 0.75rem 0.55rem 0.9rem !important;
-        border-left: 3px solid var(--sb-green) !important;
+        border-left: 3px solid var(--sb-accent) !important;
         border-radius: 0 10px 10px 0;
-        background: linear-gradient(90deg, rgba(62, 207, 142, 0.1), transparent 70%);
+        background: linear-gradient(90deg, var(--sb-accent-dim), transparent 72%);
         color: var(--sb-text) !important;
     }
     [data-testid="stFileUploader"] {
-        background: #0E0E14;
-        border: 1px dashed var(--sb-border);
+        background: var(--sb-input);
+        border: 1px dashed var(--sb-border-soft);
         border-radius: 12px;
         padding: 0.65rem;
     }
@@ -273,11 +397,7 @@ st.markdown(
         margin: 1.25rem 0 !important;
     }
 
-    /* ── Navegación lateral (sidebar) ── */
-    [data-testid="stSidebar"] {
-        background-color: var(--sb-card) !important;
-        border-right: 1px solid var(--sb-border) !important;
-    }
+    /* Navegación lateral */
     [data-testid="stSidebar"] > div:first-child {
         background-color: var(--sb-card) !important;
         padding-top: 1rem;
@@ -295,45 +415,40 @@ st.markdown(
         color: var(--sb-muted) !important;
     }
     .sb-nav-label {
-        font-size: 0.72rem;
-        letter-spacing: 0.08em;
+        font-size: 0.7rem;
+        letter-spacing: 0.1em;
         text-transform: uppercase;
         color: var(--sb-muted) !important;
-        font-weight: 600;
+        font-weight: 700;
         margin: 0 0 0.25rem 0;
     }
     .sb-nav-title {
-        font-size: 1.05rem !important;
+        font-size: 1.08rem !important;
         font-weight: 700 !important;
         color: var(--sb-text) !important;
         margin: 0 0 0.85rem 0 !important;
     }
 
-    /* Radio: quitar rojo por defecto y usar verde Supabase */
     .stRadio label,
     [data-testid="stSidebar"] .stRadio label,
     div[data-baseweb="radio"] {
         color: var(--sb-text) !important;
     }
-    /* Círculo exterior del radio */
     div[data-baseweb="radio"] > div:first-child {
         background-color: transparent !important;
         border-color: var(--sb-border) !important;
     }
-    /* Radio seleccionado (BaseWeb) */
     div[data-baseweb="radio"] input:checked + div,
     div[role="radiogroup"] label[data-baseweb="radio"] > div:first-child {
-        background-color: var(--sb-green) !important;
-        border-color: var(--sb-green) !important;
+        background-color: var(--sb-accent) !important;
+        border-color: var(--sb-accent) !important;
     }
-    /* Check mark / punto interior */
     div[data-baseweb="radio"] svg {
-        fill: #0B0B0F !important;
-        color: #0B0B0F !important;
+        fill: #04110F !important;
+        color: #04110F !important;
     }
-    /* Fallback: borde y fill vía color del tema BaseWeb */
     [data-testid="stSidebar"] div[role="radiogroup"] label {
-        background-color: #0E0E14 !important;
+        background-color: var(--sb-input) !important;
         border: 1px solid var(--sb-border) !important;
         border-radius: 10px !important;
         padding: 0.55rem 0.7rem !important;
@@ -341,23 +456,25 @@ st.markdown(
         transition: border-color 0.15s ease, background 0.15s ease;
     }
     [data-testid="stSidebar"] div[role="radiogroup"] label:hover {
-        border-color: #2E2E3A !important;
-        background-color: #15151E !important;
+        border-color: var(--sb-border-soft) !important;
+        background-color: #0F1722 !important;
     }
-    /* resaltar opción con el radio marcado */
     [data-testid="stSidebar"] div[role="radiogroup"] label:has(input:checked) {
-        border-color: var(--sb-green) !important;
-        background-color: rgba(62, 207, 142, 0.08) !important;
-        box-shadow: 0 0 0 1px rgba(62, 207, 142, 0.25);
+        border-color: var(--sb-accent) !important;
+        background-color: var(--sb-accent-dim) !important;
+        box-shadow: 0 0 0 1px rgba(43, 184, 168, 0.22);
     }
 
-    /* Primary / focus rings en verde en vez de rojo */
-    *:focus-visible {
-        outline-color: var(--sb-green) !important;
-    }
+    *:focus-visible { outline-color: var(--sb-accent) !important; }
     [data-baseweb="radio"] input:focus + div {
-        box-shadow: 0 0 0 2px rgba(62, 207, 142, 0.45) !important;
-        border-color: var(--sb-green) !important;
+        box-shadow: 0 0 0 2px rgba(43, 184, 168, 0.4) !important;
+        border-color: var(--sb-accent) !important;
+    }
+
+    /* Metrics y alertas nativas un poco más contenidas */
+    [data-testid="stMetricValue"] {
+        color: var(--sb-text) !important;
+        font-weight: 700 !important;
     }
     </style>
     """,
@@ -379,9 +496,10 @@ modo_app = st.sidebar.radio(
 )
 st.sidebar.markdown(
     """
-    <div style="margin-top:1rem;padding-top:0.85rem;border-top:1px solid #23232F;">
-      <span style="font-size:0.72rem;letter-spacing:0.06em;text-transform:uppercase;color:#9B9BA7;font-weight:600;">Estado</span>
-      <p style="margin:0.35rem 0 0 0;font-size:0.82rem;color:#3ECF8E;font-weight:600;">● Tema Supabase activo</p>
+    <div style="margin-top:1rem;padding-top:0.85rem;border-top:1px solid #1A2636;">
+      <span style="font-size:0.7rem;letter-spacing:0.08em;text-transform:uppercase;color:#8A9BB0;font-weight:700;">Estado</span>
+      <p style="margin:0.4rem 0 0 0;font-size:0.82rem;color:#2BB8A8;font-weight:700;">● Tema Cadena de Frío</p>
+      <p style="margin:0.2rem 0 0 0;font-size:0.72rem;color:#8A9BB0;">Teal reefer · sello oro export</p>
     </div>
     """,
     unsafe_allow_html=True,
@@ -509,14 +627,53 @@ if not st.session_state["autenticado"]:
     st.stop()
 
 nombre_planta = cargar_nombre_planta()
+_plant_label = nombre_planta or "Planta Autorizada"
 st.markdown(
     f"""
     <div class="sb-hero-bar">
-      <div>
-        <h1>Plataforma de control de calidad y planta</h1>
-        <div class="sb-hero-meta">GS1 · balanzas · LMR · trazabilidad · frío · precintos · sello ECC</div>
+      <div class="sb-hero-crumbs">
+        <span>AgTech Export</span>
+        <span class="dot">/</span>
+        <span>{_plant_label}</span>
+        <span class="dot">/</span>
+        <span>main</span>
+        <span class="sb-tag-prod">PRODUCTION</span>
       </div>
-      <div class="sb-hero-badge">◆ {nombre_planta or "Planta Autorizada"}</div>
+      <div class="sb-hero-top">
+        <div>
+          <h1>trazabilidad-planta</h1>
+          <div class="sb-hero-meta">
+            Control de calidad · GS1 · cadena de frío · LMR SENASA · sello Ed25519 · packing export
+          </div>
+        </div>
+        <div class="sb-hero-badge">◆ {_plant_label}</div>
+      </div>
+      <div class="sb-status-grid">
+        <div class="sb-mini-card">
+          <div class="k">Status</div>
+          <div class="v ok"><span class="sb-dot"></span> Healthy</div>
+        </div>
+        <div class="sb-mini-card">
+          <div class="k">Cadena frío</div>
+          <div class="v ok">Reefer ready</div>
+        </div>
+        <div class="sb-mini-card">
+          <div class="k">Sello ECC</div>
+          <div class="v gold">Ed25519</div>
+        </div>
+        <div class="sb-mini-card">
+          <div class="k">Cloud</div>
+          <div class="v">historial_reportes</div>
+        </div>
+        <div class="sb-mini-card">
+          <div class="k">Mercado</div>
+          <div class="v gold">Export</div>
+        </div>
+        <div class="sb-mini-card">
+          <div class="k">Motor</div>
+          <div class="v">Rust + Python</div>
+        </div>
+      </div>
     </div>
     """,
     unsafe_allow_html=True,
@@ -910,9 +1067,9 @@ if archivo is not None:
                 {archivo.name}
               </p>
               <span class="sb-hero-meta">
-                <strong style="color:#3ECF8E !important;">{total_filas}</strong> registros ·
-                <strong style="color:#3ECF8E !important;">{total_columnas}</strong> columnas ·
-                confiabilidad <strong style="color:#3ECF8E !important;">{porcentaje_limpio}%</strong>
+                <strong style="color:#2BB8A8 !important;">{total_filas}</strong> registros ·
+                <strong style="color:#2BB8A8 !important;">{total_columnas}</strong> columnas ·
+                confiabilidad <strong style="color:#D4A84B !important;">{porcentaje_limpio}%</strong>
                 · {estado_rust}
               </span>
             </div>

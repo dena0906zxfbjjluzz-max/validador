@@ -1,9 +1,9 @@
 [theme]
-# Alineado con el dashboard tipo Supabase (sin rojo Streamlit por defecto)
-primaryColor = "#3ECF8E"
-backgroundColor = "#0B0B0F"
-secondaryBackgroundColor = "#12121A"
-textColor = "#EDEDEF"
+# Cadena de Frío / agroexport — teal reefer + sello oro (no verde SaaS genérico)
+primaryColor = "#2BB8A8"
+backgroundColor = "#060A10"
+secondaryBackgroundColor = "#0C1219"
+textColor = "#EAF0F6"
 font = "sans serif"
 
 [server]
