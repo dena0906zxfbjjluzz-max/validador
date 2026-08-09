@@ -1326,6 +1326,77 @@ with col_der:
 
         st.caption("PDF firmado: use **Verificación pública ECC** en la barra de navegación.")
 
+    # Historial de sellos (antes al final del Excel) — panel derecho con botón
+    if "panel_historial_abierto" not in st.session_state:
+        st.session_state["panel_historial_abierto"] = False
+
+    with st.container(border=True):
+        st.markdown(
+            '<p class="sb-card-title">SQLite · Sellos firmados</p>'
+            '<p class="sb-card-heading">Historial de reportes</p>',
+            unsafe_allow_html=True,
+        )
+        st.caption(
+            "Sello ECC con fecha, lote, hash y responsable. "
+            "Vista compacta a la derecha (estilo panel)."
+        )
+        _hist_preview = funciones.cargar_historial_reportes_db(200)
+        _n_hist = len(_hist_preview) if _hist_preview else 0
+        st.markdown(
+            f"""
+            <div class="sb-status-row"><span>Registros</span><span>{_n_hist}</span></div>
+            """,
+            unsafe_allow_html=True,
+        )
+        _lab_hist = (
+            "Cerrar historial"
+            if st.session_state["panel_historial_abierto"]
+            else "Abrir historial de sellos"
+        )
+        if st.button(_lab_hist, type="primary", key="btn_panel_historial", use_container_width=True):
+            st.session_state["panel_historial_abierto"] = not st.session_state[
+                "panel_historial_abierto"
+            ]
+            st.rerun()
+
+        if st.session_state["panel_historial_abierto"]:
+            historial_reportes = _hist_preview
+            if historial_reportes:
+                df_hist = pd.DataFrame(historial_reportes)
+                # Columnas cortas para el panel derecho
+                _cols_pref = [
+                    c
+                    for c in (
+                        "Fecha",
+                        "fecha_hora",
+                        "Lote",
+                        "lote",
+                        "Hash",
+                        "hash_sha256",
+                        "Responsable",
+                        "responsable",
+                        "Archivo",
+                        "archivo",
+                    )
+                    if c in df_hist.columns
+                ]
+                if _cols_pref:
+                    df_show = df_hist[_cols_pref].copy()
+                else:
+                    df_show = df_hist
+                # Acortar hash en vista
+                for _hc in ("Hash", "hash_sha256"):
+                    if _hc in df_show.columns:
+                        df_show[_hc] = df_show[_hc].astype(str).str.slice(0, 12) + "…"
+                st.dataframe(df_show, width="stretch", hide_index=True, height=280)
+                if st.session_state.get("ultimo_hash_reporte"):
+                    st.caption(
+                        f"Último hash sesión: "
+                        f"`{str(st.session_state['ultimo_hash_reporte'])[:20]}…`"
+                    )
+            else:
+                st.info("Sin reportes archivados. Genere un sello ECC al cargar un Excel.")
+
     with st.container(border=True):
         st.markdown(
             '<p class="sb-card-title">Seguridad</p>'
@@ -2326,19 +2397,6 @@ if archivo is not None:
                 file_name="Packing_List_Oficial.csv",
                 mime="text/csv",
             )
-
-        st.markdown("### 6️⃣ Historial permanente de reportes firmados (SQLite)")
-        st.caption(
-            "Cada sello ECC exitoso se archiva con fecha, lote, hash SHA-256 y responsable. "
-            "Persiste en el servidor entre sleeps de la app; opcionalmente se replica a Supabase si configura secrets."
-        )
-        historial_reportes = funciones.cargar_historial_reportes_db(200)
-        if historial_reportes:
-            st.dataframe(pd.DataFrame(historial_reportes), width="stretch", hide_index=True)
-            if st.session_state.get("ultimo_hash_reporte"):
-                st.caption(f"Último hash de esta sesión: `{st.session_state['ultimo_hash_reporte']}`")
-        else:
-            st.info("Aún no hay reportes archivados. Genere un sello ECC para crear el primer registro.")
 
     except Exception as e:
         st.error(f"Ocurrió un error al procesar el archivo: {e}")
