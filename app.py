@@ -700,47 +700,85 @@ st.markdown(
         word-break: break-word;
         line-height: 1.35;
     }
+    .sb-side-nav-hint {
+        font-size: 0.7rem;
+        color: var(--sb-muted) !important;
+        margin: 0 0 0.5rem 0;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        font-weight: 700;
+    }
+
+    /* Ocultar sidebar izquierda: todo el navegador vive a la derecha */
+    [data-testid="stSidebar"],
+    [data-testid="stSidebarCollapsedControl"],
+    section[data-testid="stSidebar"] {
+        display: none !important;
+        width: 0 !important;
+        min-width: 0 !important;
+        visibility: hidden !important;
+    }
+    [data-testid="stAppViewContainer"] > .main,
+    section.main {
+        margin-left: 0 !important;
+    }
     </style>
     """,
     unsafe_allow_html=True,
 )
 
-st.sidebar.markdown(
-    """
-    <p class="sb-nav-label">Workspace</p>
-    <p class="sb-nav-title">Navegación</p>
-    """,
-    unsafe_allow_html=True,
-)
-modo_app = st.sidebar.radio(
-    "Seleccione el módulo:",
-    ["Planta / Packing (login)", "Verificación pública ECC"],
-    index=0,
-    key="nav_modo_app",
-)
-st.sidebar.markdown(
-    """
-    <div style="margin-top:1rem;padding-top:0.85rem;border-top:1px solid #1A2636;">
-      <span style="font-size:0.7rem;letter-spacing:0.08em;text-transform:uppercase;color:#8A9BB0;font-weight:700;">Estado</span>
-      <p style="margin:0.4rem 0 0 0;font-size:0.82rem;color:#2BB8A8;font-weight:700;">● Tema Cadena de Frío</p>
-      <p style="margin:0.2rem 0 0 0;font-size:0.72rem;color:#8A9BB0;">Teal reefer · sello oro export</p>
-    </div>
-    """,
-    unsafe_allow_html=True,
-)
+_NAV_PLANTA = "Planta / Packing (login)"
+_NAV_ECC = "Verificación pública ECC"
 
-# Cortafuego: cerrar sesión (solo si autenticado)
-if st.session_state.get("autenticado"):
-    st.sidebar.markdown("---")
-    st.sidebar.caption("🛡️ Cortafuego de planta")
-    _fw_user = st.session_state.get("fw_usuario") or "inspector"
-    st.sidebar.caption(f"Sesión: `{_fw_user}`")
-    if st.sidebar.button("Cerrar sesión segura", key="btn_fw_logout"):
-        firewall.cerrar_sesion(st.session_state, "logout_manual")
-        st.rerun()
+
+def _render_dock_workspace():
+    """Navegación profesional tipo workspace (lado derecho)."""
+    st.markdown(
+        '<p class="sb-card-title">Workspace</p>'
+        '<p class="sb-card-heading">Navegación</p>',
+        unsafe_allow_html=True,
+    )
+    modo = st.radio(
+        "Seleccione el módulo:",
+        [_NAV_PLANTA, _NAV_ECC],
+        key="nav_modo_app",
+    )
+    st.markdown(
+        """
+        <div style="margin-top:0.85rem;padding-top:0.75rem;border-top:1px solid #1A2636;">
+          <span style="font-size:0.7rem;letter-spacing:0.08em;text-transform:uppercase;color:#8A9BB0;font-weight:700;">Estado</span>
+          <p style="margin:0.4rem 0 0 0;font-size:0.82rem;color:#2BB8A8;font-weight:700;">● Tema Cadena de Frío</p>
+          <p style="margin:0.2rem 0 0 0;font-size:0.72rem;color:#8A9BB0;">Teal reefer · sello oro export</p>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+    if st.session_state.get("autenticado"):
+        st.markdown("---")
+        st.caption("Cortafuego de planta")
+        _fw_user = st.session_state.get("fw_usuario") or "inspector"
+        st.caption(f"Sesión: `{_fw_user}`")
+        if st.button("Cerrar sesión segura", key="btn_fw_logout", use_container_width=True):
+            firewall.cerrar_sesion(st.session_state, "logout_manual")
+            st.rerun()
+    return modo
+
+
+# Dock derecho temprano: login / ECC pública (planta autenticada monta el dock en col_der)
+_use_early_dock = not (
+    st.session_state.get("autenticado")
+    and st.session_state.get("nav_modo_app", _NAV_PLANTA) == _NAV_PLANTA
+)
+if _use_early_dock:
+    _col_early_main, _col_early_dock = st.columns([2.55, 1.05], gap="medium")
+    with _col_early_dock:
+        with st.container(border=True):
+            modo_app = _render_dock_workspace()
+else:
+    modo_app = st.session_state.get("nav_modo_app", _NAV_PLANTA)
 
 # ---------- MÓDULO PÚBLICO: verificación de PDF firmado (sin login) ----------
-if modo_app == "Verificación pública ECC":
+if modo_app == _NAV_ECC:
     st.title("Verificación pública de sello ECC")
     st.write(
         "Suba el PDF ejecutivo firmado para comprobar matemáticamente si la firma "
@@ -841,7 +879,9 @@ if modo_app == "Verificación pública ECC":
 if not st.session_state["autenticado"]:
     st.title("Acceso restringido - Control de Calidad")
     st.write("Introduzca sus credenciales para ingresar a la plataforma corporativa.")
-    st.info("¿Solo necesita validar un PDF? Use en la barra lateral: **Verificación pública ECC**.")
+    st.info(
+        "¿Solo necesita validar un PDF? Elija a la derecha: **Verificación pública ECC**."
+    )
 
     usuario_correcto, password_correcto, error_creds = cargar_credenciales_acceso()
     if error_creds:
@@ -1217,153 +1257,188 @@ with col_cen:
                     if sb_qr.get("filas") is not None:
                         st.json(sb_qr.get("filas"))
 
-# ── Columna derecha: Estado BD + verificación ECC ─────────────────────────────
+# ── Columna derecha: workspace + 3 paneles ───────────────────────────────────
 with col_der:
+    if "panel_der" not in st.session_state:
+        st.session_state["panel_der"] = None
+
+    def _abrir_panel_der(pid: str):
+        if st.session_state.get("panel_der") == pid:
+            st.session_state["panel_der"] = None
+        else:
+            st.session_state["panel_der"] = pid
+
+    # Navegación (solo aquí cuando sesión de planta activa)
+    with st.container(border=True):
+        _modo_dock = _render_dock_workspace()
+        if _modo_dock == _NAV_ECC:
+            st.rerun()
+
     with st.container(border=True):
         st.markdown(
-            '<p class="sb-card-title">Infraestructura</p>'
-            '<p class="sb-card-heading">Estado de base de datos</p>',
+            '<p class="sb-card-title">Servicios</p>'
+            '<p class="sb-card-heading">Atajos de planta</p>'
+            '<p class="sb-side-nav-hint">Menú · un clic</p>',
             unsafe_allow_html=True,
         )
 
-        # Solo lectura de secrets / estado de sesión (sin writes a Supabase)
-        _sb_url, _sb_key, _sb_err = None, None, None
-        try:
-            _sb_url, _sb_key, _sb_err = funciones._supabase_config()
-        except Exception as _e_sb:
-            _sb_err = str(_e_sb)
+        _p = st.session_state.get("panel_der")
+        if st.button(
+            "Base de datos",
+            key="nav_der_db",
+            type="primary" if _p == "db" else "secondary",
+            use_container_width=True,
+        ):
+            _abrir_panel_der("db")
+            st.rerun()
+        if st.button(
+            "Historial de sellos",
+            key="nav_der_hist",
+            type="primary" if _p == "hist" else "secondary",
+            use_container_width=True,
+        ):
+            _abrir_panel_der("hist")
+            st.rerun()
+        if st.button(
+            "Seguridad",
+            key="nav_der_seg",
+            type="primary" if _p == "seg" else "secondary",
+            use_container_width=True,
+        ):
+            _abrir_panel_der("seg")
+            st.rerun()
+        st.caption("Pulse de nuevo el mismo botón para cerrar el panel.")
 
-        if _sb_url and _sb_key and not _sb_err:
+    # —— Contenido: Base de datos + ECC ——
+    if st.session_state.get("panel_der") == "db":
+        with st.container(border=True):
             st.markdown(
-                '<span class="sb-pill ok">Supabase conectado</span>',
+                '<p class="sb-card-title">Infraestructura</p>'
+                '<p class="sb-card-heading">Estado de base de datos</p>',
                 unsafe_allow_html=True,
             )
+
+            _sb_url, _sb_key, _sb_err = None, None, None
+            try:
+                _sb_url, _sb_key, _sb_err = funciones._supabase_config()
+            except Exception as _e_sb:
+                _sb_err = str(_e_sb)
+
+            if _sb_url and _sb_key and not _sb_err:
+                st.markdown(
+                    '<span class="sb-pill ok">Supabase conectado</span>',
+                    unsafe_allow_html=True,
+                )
+                st.markdown(
+                    f"""
+                    <div class="sb-status-row"><span>Proyecto</span><span>{(_sb_url or "")[:36]}…</span></div>
+                    <div class="sb-status-row"><span>Tabla sellos</span><span>historial_reportes</span></div>
+                    <div class="sb-status-row"><span>API key</span><span>configurada</span></div>
+                    """,
+                    unsafe_allow_html=True,
+                )
+            else:
+                st.markdown(
+                    '<span class="sb-pill warn">Supabase no configurado</span>',
+                    unsafe_allow_html=True,
+                )
+                if _sb_err:
+                    st.caption(str(_sb_err)[:180])
+
             st.markdown(
                 f"""
-                <div class="sb-status-row"><span>Proyecto</span><span>{(_sb_url or "")[:36]}…</span></div>
-                <div class="sb-status-row"><span>Tabla sellos</span><span>historial_reportes</span></div>
-                <div class="sb-status-row"><span>API key</span><span>configurada</span></div>
+                <div class="sb-status-row"><span>SQLite local</span><span>planta_calidad_prod.db</span></div>
+                <div class="sb-status-row"><span>Último POST sello</span>
+                <span>{"OK" if (st.session_state.get("ultimo_supabase") or {}).get("ok") else (st.session_state.get("ultimo_supabase") or {}).get("mensaje", "—")[:40]}</span></div>
                 """,
                 unsafe_allow_html=True,
             )
-        else:
+
+            ultimo_hash = st.session_state.get("ultimo_hash_reporte")
+            if ultimo_hash:
+                st.caption(f"Último hash de sesión: `{str(ultimo_hash)[:20]}…`")
+
+            _kpi = st.session_state.get("kpi_archivo") or {}
+            if _kpi:
+                st.markdown("---")
+                st.markdown(
+                    '<p class="sb-card-title">Archivo activo</p>',
+                    unsafe_allow_html=True,
+                )
+                st.metric("Total registros", _kpi.get("filas", "—"))
+                st.metric("Campos vacíos", _kpi.get("errores", "—"))
+                st.metric(
+                    "Confiabilidad",
+                    f"{_kpi.get('porcentaje', '—')}%",
+                    delta=_kpi.get("motor", ""),
+                )
+                if _kpi.get("historial"):
+                    with st.expander("Historial de cargas (SQLite)"):
+                        st.dataframe(
+                            pd.DataFrame(_kpi["historial"]),
+                            width="stretch",
+                            hide_index=True,
+                        )
+
+            st.markdown("---")
             st.markdown(
-                '<span class="sb-pill warn">Supabase no configurado</span>',
-                unsafe_allow_html=True,
-            )
-            if _sb_err:
-                st.caption(str(_sb_err)[:180])
-
-        st.markdown(
-            f"""
-            <div class="sb-status-row"><span>SQLite local</span><span>planta_calidad_prod.db</span></div>
-            <div class="sb-status-row"><span>Último POST sello</span>
-            <span>{"OK" if (st.session_state.get("ultimo_supabase") or {}).get("ok") else (st.session_state.get("ultimo_supabase") or {}).get("mensaje", "—")[:40]}</span></div>
-            """,
-            unsafe_allow_html=True,
-        )
-
-        ultimo_hash = st.session_state.get("ultimo_hash_reporte")
-        if ultimo_hash:
-            st.caption(f"Último hash de sesión: `{str(ultimo_hash)[:20]}…`")
-
-        st.markdown("---")
-        st.markdown(
-            '<p class="sb-card-title">Criptografía</p>'
-            '<p class="sb-card-heading">Verificación ECC</p>',
-            unsafe_allow_html=True,
-        )
-
-        try:
-            _modo_ecc = motor_planta.modo_firma_activo()
-            _backend_ecc = motor_planta.motor_activo()
-            _diag_ecc = motor_planta.diagnostico()
-            _pub_oficial = motor_planta.llave_publica_oficial_hex()
-        except Exception:
-            _modo_ecc, _backend_ecc, _diag_ecc, _pub_oficial = "n/d", "n/d", "n/d", None
-
-        if _modo_ecc == "real":
-            st.markdown(
-                '<span class="sb-pill ok">Ed25519 real</span>',
-                unsafe_allow_html=True,
-            )
-        else:
-            st.markdown(
-                '<span class="sb-pill warn">Modo demo / revisión</span>',
+                '<p class="sb-card-title">Criptografía</p>'
+                '<p class="sb-card-heading">Verificación ECC</p>',
                 unsafe_allow_html=True,
             )
 
-        _backend_ui = _backend_ecc
-        if _modo_ecc == "real" and str(_backend_ecc) in ("python", "n/d"):
-            _backend_ui = "rust" if motor_planta.rust_disponible() else _backend_ecc
+            try:
+                _modo_ecc = motor_planta.modo_firma_activo()
+                _backend_ecc = motor_planta.motor_activo()
+                _diag_ecc = motor_planta.diagnostico()
+                _pub_oficial = motor_planta.llave_publica_oficial_hex()
+            except Exception:
+                _modo_ecc, _backend_ecc, _diag_ecc, _pub_oficial = "n/d", "n/d", "n/d", None
 
-        st.markdown(
-            f"""
-            <div class="sb-status-row"><span>Modo firma</span><span>{_modo_ecc}</span></div>
-            <div class="sb-status-row"><span>Backend</span><span>{_backend_ui}</span></div>
-            """,
-            unsafe_allow_html=True,
-        )
-        if _pub_oficial:
-            st.caption(f"Llave pública oficial: `{_pub_oficial[:16]}…`")
-            st.caption(
-                "La llave de secrets ya está activa. El sello del PDF se firmará "
-                "con ella al generar el reporte (no depende del Excel)."
-            )
-        elif _modo_ecc != "real":
-            st.caption(
-                "Sin LLAVE_PRIVADA usable: las firmas serán efímeras (demo). "
-                "Eso es independiente de subir el Excel."
-            )
-        st.caption(f"Diagnóstico: {_diag_ecc}")
-
-        qr_ui = st.session_state.get("ultimo_resultado_qr")
-        if qr_ui:
-            if qr_ui.get("verificado"):
-                st.success("Último QR: verificado")
+            if _modo_ecc == "real":
+                st.markdown(
+                    '<span class="sb-pill ok">Ed25519 real</span>',
+                    unsafe_allow_html=True,
+                )
             else:
-                st.warning("Último QR: no verificado / alerta")
+                st.markdown(
+                    '<span class="sb-pill warn">Modo demo / revisión</span>',
+                    unsafe_allow_html=True,
+                )
 
-        st.caption("PDF firmado: use **Verificación pública ECC** en la barra de navegación.")
+            _backend_ui = _backend_ecc
+            if _modo_ecc == "real" and str(_backend_ecc) in ("python", "n/d"):
+                _backend_ui = "rust" if motor_planta.rust_disponible() else _backend_ecc
 
-    # Historial de sellos (antes al final del Excel) — panel derecho con botón
-    if "panel_historial_abierto" not in st.session_state:
-        st.session_state["panel_historial_abierto"] = False
+            st.markdown(
+                f"""
+                <div class="sb-status-row"><span>Modo firma</span><span>{_modo_ecc}</span></div>
+                <div class="sb-status-row"><span>Backend</span><span>{_backend_ui}</span></div>
+                """,
+                unsafe_allow_html=True,
+            )
+            if _pub_oficial:
+                st.caption(f"Llave pública oficial: `{_pub_oficial[:16]}…`")
+            st.caption(f"Diagnóstico: {_diag_ecc}")
+            st.caption("PDF firmado: use **Verificación pública ECC** en el panel derecho.")
 
-    with st.container(border=True):
-        st.markdown(
-            '<p class="sb-card-title">SQLite · Sellos firmados</p>'
-            '<p class="sb-card-heading">Historial de reportes</p>',
-            unsafe_allow_html=True,
-        )
-        st.caption(
-            "Sello ECC con fecha, lote, hash y responsable. "
-            "Vista compacta a la derecha (estilo panel)."
-        )
-        _hist_preview = funciones.cargar_historial_reportes_db(200)
-        _n_hist = len(_hist_preview) if _hist_preview else 0
-        st.markdown(
-            f"""
-            <div class="sb-status-row"><span>Registros</span><span>{_n_hist}</span></div>
-            """,
-            unsafe_allow_html=True,
-        )
-        _lab_hist = (
-            "Cerrar historial"
-            if st.session_state["panel_historial_abierto"]
-            else "Abrir historial de sellos"
-        )
-        if st.button(_lab_hist, type="primary", key="btn_panel_historial", use_container_width=True):
-            st.session_state["panel_historial_abierto"] = not st.session_state[
-                "panel_historial_abierto"
-            ]
-            st.rerun()
-
-        if st.session_state["panel_historial_abierto"]:
-            historial_reportes = _hist_preview
+    # —— Contenido: Historial de sellos ——
+    if st.session_state.get("panel_der") == "hist":
+        with st.container(border=True):
+            st.markdown(
+                '<p class="sb-card-title">SQLite · Sellos firmados</p>'
+                '<p class="sb-card-heading">Historial de reportes</p>',
+                unsafe_allow_html=True,
+            )
+            st.caption("Fecha, lote, hash y responsable de cada sello ECC.")
+            historial_reportes = funciones.cargar_historial_reportes_db(200)
+            _n_hist = len(historial_reportes) if historial_reportes else 0
+            st.markdown(
+                f'<div class="sb-status-row"><span>Registros</span><span>{_n_hist}</span></div>',
+                unsafe_allow_html=True,
+            )
             if historial_reportes:
                 df_hist = pd.DataFrame(historial_reportes)
-                # Columnas cortas para el panel derecho
                 _cols_pref = [
                     c
                     for c in (
@@ -1380,11 +1455,7 @@ with col_der:
                     )
                     if c in df_hist.columns
                 ]
-                if _cols_pref:
-                    df_show = df_hist[_cols_pref].copy()
-                else:
-                    df_show = df_hist
-                # Acortar hash en vista
+                df_show = df_hist[_cols_pref].copy() if _cols_pref else df_hist
                 for _hc in ("Hash", "hash_sha256"):
                     if _hc in df_show.columns:
                         df_show[_hc] = df_show[_hc].astype(str).str.slice(0, 12) + "…"
@@ -1397,51 +1468,52 @@ with col_der:
             else:
                 st.info("Sin reportes archivados. Genere un sello ECC al cargar un Excel.")
 
-    with st.container(border=True):
-        st.markdown(
-            '<p class="sb-card-title">Seguridad</p>'
-            '<p class="sb-card-heading">Cortafuego de planta</p>',
-            unsafe_allow_html=True,
-        )
-        _fw = firewall.resumen_panel(st.session_state)
-        st.markdown(
-            '<span class="sb-pill ok">Firewall ON</span>',
-            unsafe_allow_html=True,
-        )
-        st.markdown(
-            f"""
-            <div class="sb-status-row"><span>Usuario sesión</span><span>{_fw.get('usuario')}</span></div>
-            <div class="sb-status-row"><span>Token</span><span>{_fw.get('token_corto')}</span></div>
-            <div class="sb-status-row"><span>Timeout</span><span>{_fw.get('timeout_min')} min</span></div>
-            <div class="sb-status-row"><span>Max login fails</span><span>{_fw.get('max_intentos')}</span></div>
-            <div class="sb-status-row"><span>Upload máx.</span><span>{_fw.get('max_upload_mb')} MB</span></div>
-            """,
-            unsafe_allow_html=True,
-        )
-        _ev = firewall.ultimos_eventos(5)
-        if _ev:
-            with st.expander("Últimos eventos de seguridad"):
-                for e in _ev:
-                    import html as _html
+    # —— Contenido: Seguridad ——
+    if st.session_state.get("panel_der") == "seg":
+        with st.container(border=True):
+            st.markdown(
+                '<p class="sb-card-title">Seguridad</p>'
+                '<p class="sb-card-heading">Cortafuego de planta</p>',
+                unsafe_allow_html=True,
+            )
+            _fw = firewall.resumen_panel(st.session_state)
+            st.markdown(
+                '<span class="sb-pill ok">Firewall ON</span>',
+                unsafe_allow_html=True,
+            )
+            st.markdown(
+                f"""
+                <div class="sb-status-row"><span>Usuario sesión</span><span>{_fw.get('usuario')}</span></div>
+                <div class="sb-status-row"><span>Token</span><span>{_fw.get('token_corto')}</span></div>
+                <div class="sb-status-row"><span>Timeout</span><span>{_fw.get('timeout_min')} min</span></div>
+                <div class="sb-status-row"><span>Max login fails</span><span>{_fw.get('max_intentos')}</span></div>
+                <div class="sb-status-row"><span>Upload máx.</span><span>{_fw.get('max_upload_mb')} MB</span></div>
+                """,
+                unsafe_allow_html=True,
+            )
+            _ev = firewall.ultimos_eventos(5)
+            if _ev:
+                with st.expander("Últimos eventos de seguridad"):
+                    for e in _ev:
+                        import html as _html
 
-                    fecha = _html.escape(str(e.get("fecha") or "—"))
-                    evento = _html.escape(str(e.get("evento") or "—"))
-                    sev = _html.escape(str(e.get("severidad") or "info"))
-                    det = _html.escape(str(e.get("detalle") or "").strip())
-                    # HTML propio: no usar st.caption(`code`) — el badge de code se sale del card
-                    st.markdown(
-                        f"""
-                        <div class="fw-event-row">
-                          <div class="fw-event-time">{fecha}</div>
-                          <div class="fw-event-main">
-                            <span class="fw-event-name">{evento}</span>
-                            <span class="fw-event-sev">{sev}</span>
-                          </div>
-                          <div class="fw-event-det">{det}</div>
-                        </div>
-                        """,
-                        unsafe_allow_html=True,
-                    )
+                        fecha = _html.escape(str(e.get("fecha") or "—"))
+                        evento = _html.escape(str(e.get("evento") or "—"))
+                        sev = _html.escape(str(e.get("severidad") or "info"))
+                        det = _html.escape(str(e.get("detalle") or "").strip())
+                        st.markdown(
+                            f"""
+                            <div class="fw-event-row">
+                              <div class="fw-event-time">{fecha}</div>
+                              <div class="fw-event-main">
+                                <span class="fw-event-name">{evento}</span>
+                                <span class="fw-event-sev">{sev}</span>
+                              </div>
+                              <div class="fw-event-det">{det}</div>
+                            </div>
+                            """,
+                            unsafe_allow_html=True,
+                        )
 
 # ─── Módulo 5: Contenedores (siempre visible, UX igual a Módulo 6) ────────────
 st.markdown("---")
@@ -1689,24 +1761,15 @@ if archivo is not None:
         hora_actual = datetime.datetime.now().strftime("%H:%M:%S")
         funciones.guardar_historial_db(hora_actual, archivo.name, total_filas, f"{porcentaje_limpio}%")
 
-        st.sidebar.markdown("---")
-        st.sidebar.metric(label="Total Registros", value=total_filas)
-        st.sidebar.metric(
-            label="Campos Vacíos",
-            value=total_errores,
-            delta=f"-{total_errores}" if total_errores > 0 else "0",
-            delta_color="inverse",
-        )
-        st.sidebar.metric(label="Confiabilidad (Motor Rust)", value=f"{porcentaje_limpio}%", delta=estado_rust)
-
-        historial_db_data = funciones.cargar_historial_db()
-        if historial_db_data:
-            st.sidebar.subheader("🕒 Historial Persistente (SQLite)")
-            st.sidebar.dataframe(
-                pd.DataFrame(historial_db_data),
-                use_container_width=True,
-                hide_index=True,
-            )
+        st.session_state["kpi_archivo"] = {
+            "filas": total_filas,
+            "errores": total_errores,
+            "porcentaje": porcentaje_limpio,
+            "motor": estado_rust,
+            "historial": funciones.cargar_historial_db(),
+            "archivo": archivo.name,
+        }
+        historial_db_data = st.session_state["kpi_archivo"]["historial"]
 
         st.markdown(
             f"""
