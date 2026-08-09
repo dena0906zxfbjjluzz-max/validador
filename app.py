@@ -1655,246 +1655,139 @@ if archivo is not None:
             unsafe_allow_html=True,
         )
 
-        # MÓDULO 1 (tarjeta estilo Módulo 5 — solo al cargar Excel)
-        with st.container(border=True):
-            st.markdown(
-                '<p class="sb-card-title">Balanza · SSCC · GS1-128</p>'
-                '<p class="sb-card-heading">Módulo 1 — Pesaje y lectura de pallets</p>',
-                unsafe_allow_html=True,
-            )
-            st.caption(
-                "Registre el peso de balanza en la última fila o busque un SSCC / caja en el archivo cargado."
-            )
-            col_b1, col_b2 = st.columns(2)
-            with col_b1:
-                st.markdown(
-                    '<p class="sb-card-title">Balanza en línea</p>',
-                    unsafe_allow_html=True,
-                )
-                st.info("El peso se escribe en la última fila de la columna PESO del archivo cargado.")
-                peso_capturado = st.number_input(
-                    "Peso neto capturado desde balanza (kg):",
-                    value=4.5,
-                    step=0.1,
-                    key="mod1_peso",
-                )
-                if st.button(
-                    "Registrar peso en última fila",
-                    type="primary",
-                    key="btn_mod1_peso",
-                ):
-                    df_nuevo, ok_peso, col_peso_usada = funciones.registrar_peso_ultima_fila(
-                        df_original, peso_capturado
+        # MÓDULO 1
+        st.markdown("---")
+        st.markdown("### 🔌 Módulo 1: Conexión de Balanza y Lectura Rápida de Pallets (SSCC)")
+        col_b1, col_b2 = st.columns(2)
+        with col_b1:
+            st.info("⚡ **Balanza en línea:** el peso se escribe en la última fila de la columna PESO del archivo cargado.")
+            peso_capturado = st.number_input("Peso Neto capturado desde Balanza (kg):", value=4.5, step=0.1)
+            if st.button("📥 Registrar Peso en Última Fila"):
+                df_nuevo, ok_peso, col_peso_usada = funciones.registrar_peso_ultima_fila(df_original, peso_capturado)
+                if ok_peso:
+                    st.session_state["df_trabajo"] = df_nuevo
+                    df_original = df_nuevo
+                    funciones.guardar_cambio_db(
+                        datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                        len(df_original) - 1,
+                        col_peso_usada,
+                        "(balanza)",
+                        str(peso_capturado),
+                        auditor_nombre,
                     )
-                    if ok_peso:
-                        st.session_state["df_trabajo"] = df_nuevo
-                        df_original = df_nuevo
-                        funciones.guardar_cambio_db(
-                            datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                            len(df_original) - 1,
-                            col_peso_usada,
-                            "(balanza)",
-                            str(peso_capturado),
-                            auditor_nombre,
-                        )
-                        st.success(
-                            f"Peso de {peso_capturado} kg registrado en la última fila "
-                            f"(columna `{col_peso_usada}`)."
-                        )
-                        st.rerun()
-                    else:
-                        st.error(
-                            "No se encontró una columna de PESO en el archivo, o el archivo está vacío."
-                        )
-            with col_b2:
-                st.markdown(
-                    '<p class="sb-card-title">Lector SSCC / caja</p>',
-                    unsafe_allow_html=True,
-                )
-                st.info(
-                    "Busca el código en el archivo cargado (CAJA, SSCC, PALLET, CODIGO, LOTE)."
-                )
-                sscc_input = st.text_input(
-                    "Escanear código SSCC o caja:",
-                    placeholder="Ej: 077512345678901234",
-                    key="mod1_sscc",
-                )
-                if sscc_input:
-                    df_sscc = funciones.buscar_registros_por_codigo(df_original, sscc_input)
-                    if df_sscc.empty:
-                        st.error(f"Código `{sscc_input}` no encontrado en la base cargada.")
-                    else:
-                        st.success(
-                            f"Unidad encontrada: **{sscc_input}** ({len(df_sscc)} registro(s))"
-                        )
-                        st.dataframe(df_sscc, width="stretch", hide_index=True)
+                    st.success(f"Peso de {peso_capturado} kg registrado en la última fila (columna `{col_peso_usada}`).")
+                    st.rerun()
+                else:
+                    st.error("No se encontró una columna de PESO en el archivo, o el archivo está vacío.")
+        with col_b2:
+            st.info("🔫 **Lector GS1-128 / SSCC:** busca el código en el archivo cargado (CAJA, SSCC, PALLET, CODIGO, LOTE).")
+            sscc_input = st.text_input("Escanear Código SSCC o Caja:", placeholder="Ej: 077512345678901234")
+            if sscc_input:
+                df_sscc = funciones.buscar_registros_por_codigo(df_original, sscc_input)
+                if df_sscc.empty:
+                    st.error(f"Código `{sscc_input}` no encontrado en la base cargada.")
+                else:
+                    st.success(f"Unidad encontrada: **{sscc_input}** ({len(df_sscc)} registro(s))")
+                    st.dataframe(df_sscc, width="stretch", hide_index=True)
 
-        # MÓDULO 2 (tarjeta estilo Módulo 5 — solo al cargar Excel)
-        with st.container(border=True):
-            st.markdown(
-                '<p class="sb-card-title">SENASA · LMR · Laboratorio</p>'
-                '<p class="sb-card-heading">Módulo 2 — Límites máximos de residuos</p>',
-                unsafe_allow_html=True,
+        # MÓDULO 2
+        st.markdown("---")
+        st.markdown("### 🧪 Módulo 2: Control de Límites Máximos de Residuos (LMR) y Certificación SENASA")
+        lotes_disponibles = []
+        if cols_traza["lote"]:
+            lotes_disponibles = sorted(
+                [x for x in df_original[cols_traza["lote"]].astype(str).str.strip().unique() if x and x != "nan"]
             )
-            st.caption(
-                "Consulte el lote en el archivo o indique el veredicto de laboratorio."
+        lote_default = lotes_disponibles[0] if lotes_disponibles else ""
+        col_mle1, col_mle2, col_mle3 = st.columns(3)
+        with col_mle1:
+            if lotes_disponibles:
+                lote_lmr_sel = st.selectbox("Lote a consultar LMR:", options=lotes_disponibles, index=0)
+            else:
+                lote_lmr_sel = st.text_input("Ingrese Lote a Consultar LMR:", value=lote_default, placeholder="Ej: LOTE-001")
+        with col_mle2:
+            analisis_lab = st.selectbox(
+                "Resultado de laboratorio (manual / respaldo):",
+                ["Usar dato del archivo", "Conforme (Bajo LMR)", "Alerta (Cercano al Límite)", "Rechazado (Supera LMR)"],
             )
-            lotes_disponibles = []
-            if cols_traza["lote"]:
-                lotes_disponibles = sorted(
-                    [
-                        x
-                        for x in df_original[cols_traza["lote"]].astype(str).str.strip().unique()
-                        if x and x != "nan"
-                    ]
-                )
-            lote_default = lotes_disponibles[0] if lotes_disponibles else ""
-            col_mle1, col_mle2 = st.columns(2)
-            with col_mle1:
-                st.markdown(
-                    '<p class="sb-card-title">Consulta de lote</p>',
-                    unsafe_allow_html=True,
-                )
-                if lotes_disponibles:
-                    lote_lmr_sel = st.selectbox(
-                        "Lote a consultar LMR:",
-                        options=lotes_disponibles,
-                        index=0,
-                        key="mod2_lote",
+        with col_mle3:
+            estado_lmr = "sin_dato"
+            detalle_lmr = "Sin lote consultado"
+            df_lote_lmr = pd.DataFrame()
+            if lote_lmr_sel:
+                df_lote_lmr = funciones.buscar_registros_por_codigo(df_original, lote_lmr_sel)
+                if cols_traza["lote"] and df_lote_lmr.empty:
+                    mask_lote = df_original[cols_traza["lote"]].astype(str).str.strip().str.fullmatch(
+                        str(lote_lmr_sel).strip(), case=False, na=False
+                    )
+                    df_lote_lmr = df_original.loc[mask_lote].copy()
+
+                if analisis_lab != "Usar dato del archivo":
+                    if "Conforme" in analisis_lab:
+                        estado_lmr = "conforme"
+                    elif "Alerta" in analisis_lab:
+                        estado_lmr = "alerta"
+                    else:
+                        estado_lmr = "rechazado"
+                    detalle_lmr = analisis_lab
+                elif not df_lote_lmr.empty and cols_traza["lmr"]:
+                    valores_lmr = df_lote_lmr[cols_traza["lmr"]].astype(str).str.strip()
+                    estados = [funciones.interpretar_estado_lmr(v) for v in valores_lmr if v and v != "nan"]
+                    if "rechazado" in estados:
+                        estado_lmr = "rechazado"
+                    elif "alerta" in estados:
+                        estado_lmr = "alerta"
+                    elif "conforme" in estados:
+                        estado_lmr = "conforme"
+                    detalle_lmr = ", ".join(sorted(set(valores_lmr.head(5))))
+                elif df_lote_lmr.empty:
+                    detalle_lmr = "Lote no encontrado en archivo"
+                else:
+                    detalle_lmr = "Lote hallado, sin columna LMR; use el selector manual"
+
+            if estado_lmr == "conforme":
+                st.success(f"🟢 **SENASA / Destino:** APROBADO — {detalle_lmr}")
+            elif estado_lmr == "alerta":
+                st.warning(f"🟡 **SENASA / Destino:** EN CUARENTENA — {detalle_lmr}")
+            elif estado_lmr == "rechazado":
+                st.error(f"🔴 **SENASA / Destino:** BLOQUEADO DE PLANTA — {detalle_lmr}")
+            else:
+                st.info(f"ℹ️ **SENASA / Destino:** Sin veredicto automático — {detalle_lmr}")
+
+        if lote_lmr_sel and not df_lote_lmr.empty:
+            with st.expander(f"Registros del lote `{lote_lmr_sel}` ({len(df_lote_lmr)})"):
+                st.dataframe(df_lote_lmr, width="stretch", hide_index=True)
+
+        # MÓDULO 3
+        st.markdown("---")
+        st.markdown("### 🗺️ Módulo 3: Trazabilidad Inversa (De Caja o Pallet al Fundo de Origen)")
+        col_inv1, col_inv2 = st.columns([2, 3])
+        with col_inv1:
+            caja_busqueda_inversa = st.text_input(
+                "🔍 Ingrese ID de Caja o Pallet para Trazabilidad Inversa:",
+                placeholder="Ej: CJ-9842 / SSCC / LOTE",
+            )
+            cols_detectadas = [f"`{v}` ({k})" for k, v in cols_traza.items() if v]
+            if cols_detectadas:
+                st.caption("Columnas detectadas: " + ", ".join(cols_detectadas[:8]))
+            else:
+                st.caption("No se detectaron columnas típicas de trazabilidad; se buscará en todo el archivo.")
+        with col_inv2:
+            if caja_busqueda_inversa:
+                df_traza = funciones.buscar_registros_por_codigo(df_original, caja_busqueda_inversa)
+                if df_traza.empty:
+                    st.error(
+                        f"No se encontró trazabilidad para `{caja_busqueda_inversa}`. "
+                        "Verifique que el ID exista en columnas CAJA, PALLET, SSCC, CODIGO o LOTE."
                     )
                 else:
-                    lote_lmr_sel = st.text_input(
-                        "Ingrese lote a consultar LMR:",
-                        value=lote_default,
-                        placeholder="Ej: LOTE-001",
-                        key="mod2_lote_txt",
+                    arbol = funciones.armar_arbol_trazabilidad(
+                        df_traza.iloc[0], cols_traza, auditor_nombre, caja_busqueda_inversa
                     )
-                analisis_lab = st.selectbox(
-                    "Resultado de laboratorio (manual / respaldo):",
-                    [
-                        "Usar dato del archivo",
-                        "Conforme (Bajo LMR)",
-                        "Alerta (Cercano al Límite)",
-                        "Rechazado (Supera LMR)",
-                    ],
-                    key="mod2_lab",
-                )
-            with col_mle2:
-                st.markdown(
-                    '<p class="sb-card-title">Veredicto SENASA / destino</p>',
-                    unsafe_allow_html=True,
-                )
-                estado_lmr = "sin_dato"
-                detalle_lmr = "Sin lote consultado"
-                df_lote_lmr = pd.DataFrame()
-                if lote_lmr_sel:
-                    df_lote_lmr = funciones.buscar_registros_por_codigo(
-                        df_original, lote_lmr_sel
-                    )
-                    if cols_traza["lote"] and df_lote_lmr.empty:
-                        mask_lote = (
-                            df_original[cols_traza["lote"]]
-                            .astype(str)
-                            .str.strip()
-                            .str.fullmatch(str(lote_lmr_sel).strip(), case=False, na=False)
-                        )
-                        df_lote_lmr = df_original.loc[mask_lote].copy()
+                    st.markdown(
+                        f"""
+**Árbol genealógico de trazabilidad para `{arbol['codigo']}`**
 
-                    if analisis_lab != "Usar dato del archivo":
-                        if "Conforme" in analisis_lab:
-                            estado_lmr = "conforme"
-                        elif "Alerta" in analisis_lab:
-                            estado_lmr = "alerta"
-                        else:
-                            estado_lmr = "rechazado"
-                        detalle_lmr = analisis_lab
-                    elif not df_lote_lmr.empty and cols_traza["lmr"]:
-                        valores_lmr = df_lote_lmr[cols_traza["lmr"]].astype(str).str.strip()
-                        estados = [
-                            funciones.interpretar_estado_lmr(v)
-                            for v in valores_lmr
-                            if v and v != "nan"
-                        ]
-                        if "rechazado" in estados:
-                            estado_lmr = "rechazado"
-                        elif "alerta" in estados:
-                            estado_lmr = "alerta"
-                        elif "conforme" in estados:
-                            estado_lmr = "conforme"
-                        detalle_lmr = ", ".join(sorted(set(valores_lmr.head(5))))
-                    elif df_lote_lmr.empty:
-                        detalle_lmr = "Lote no encontrado en archivo"
-                    else:
-                        detalle_lmr = "Lote hallado, sin columna LMR; use el selector manual"
-
-                if estado_lmr == "conforme":
-                    st.success(f"**SENASA / Destino:** APROBADO — {detalle_lmr}")
-                elif estado_lmr == "alerta":
-                    st.warning(f"**SENASA / Destino:** EN CUARENTENA — {detalle_lmr}")
-                elif estado_lmr == "rechazado":
-                    st.error(f"**SENASA / Destino:** BLOQUEADO DE PLANTA — {detalle_lmr}")
-                else:
-                    st.info(f"**SENASA / Destino:** Sin veredicto automático — {detalle_lmr}")
-
-            if lote_lmr_sel and not df_lote_lmr.empty:
-                with st.expander(f"Registros del lote `{lote_lmr_sel}` ({len(df_lote_lmr)})"):
-                    st.dataframe(df_lote_lmr, width="stretch", hide_index=True)
-
-        # MÓDULO 3 (tarjeta estilo Módulo 5 — solo al cargar Excel)
-        with st.container(border=True):
-            st.markdown(
-                '<p class="sb-card-title">Fundo · Cosecha · Packing</p>'
-                '<p class="sb-card-heading">Módulo 3 — Trazabilidad inversa</p>',
-                unsafe_allow_html=True,
-            )
-            st.caption(
-                "Ingrese caja, pallet o SSCC y obtenga el árbol de origen del archivo cargado."
-            )
-            col_inv1, col_inv2 = st.columns([1, 1])
-            with col_inv1:
-                st.markdown(
-                    '<p class="sb-card-title">Búsqueda</p>',
-                    unsafe_allow_html=True,
-                )
-                caja_busqueda_inversa = st.text_input(
-                    "ID de caja o pallet:",
-                    placeholder="Ej: CJ-9842 / SSCC / LOTE",
-                    key="mod3_caja",
-                )
-                cols_detectadas = [f"`{v}` ({k})" for k, v in cols_traza.items() if v]
-                if cols_detectadas:
-                    st.caption("Columnas detectadas: " + ", ".join(cols_detectadas[:8]))
-                else:
-                    st.caption(
-                        "No se detectaron columnas típicas de trazabilidad; "
-                        "se buscará en todo el archivo."
-                    )
-            with col_inv2:
-                st.markdown(
-                    '<p class="sb-card-title">Árbol de origen</p>',
-                    unsafe_allow_html=True,
-                )
-                if caja_busqueda_inversa:
-                    df_traza = funciones.buscar_registros_por_codigo(
-                        df_original, caja_busqueda_inversa
-                    )
-                    if df_traza.empty:
-                        st.error(
-                            f"No se encontró trazabilidad para `{caja_busqueda_inversa}`. "
-                            "Verifique CAJA, PALLET, SSCC, CODIGO o LOTE."
-                        )
-                    else:
-                        arbol = funciones.armar_arbol_trazabilidad(
-                            df_traza.iloc[0],
-                            cols_traza,
-                            auditor_nombre,
-                            caja_busqueda_inversa,
-                        )
-                        st.success(
-                            f"Código `{arbol['codigo']}` · {len(df_traza)} coincidencia(s)"
-                        )
-                        st.markdown(
-                            f"""
 - **Fundo / Parcela:** {arbol['fundo']}
 - **Productor registrado:** {arbol['productor']}
 - **Lote de proceso:** {arbol['lote']}
@@ -1903,120 +1796,93 @@ if archivo is not None:
 - **Peso / Calibre:** {arbol['peso']} / {arbol['calibre']}
 - **Estado LMR en archivo:** {arbol['lmr']}
 - **Inspector responsable:** {arbol['inspector']}
+- **Coincidencias:** {len(df_traza)} registro(s)
 """
-                        )
-                        if len(df_traza) > 1:
-                            st.dataframe(df_traza, width="stretch", hide_index=True)
-                else:
-                    st.caption("El resultado de trazabilidad aparecerá aquí.")
+                    )
+                    if len(df_traza) > 1:
+                        st.dataframe(df_traza, width="stretch", hide_index=True)
 
-        # MÓDULO 4 (tarjeta estilo Módulo 5 — solo al cargar Excel)
-        with st.container(border=True):
-            st.markdown(
-                '<p class="sb-card-title">Pre-frío · Cámaras · Reefer</p>'
-                '<p class="sb-card-heading">Módulo 4 — Control térmico de cadena de frío</p>',
-                unsafe_allow_html=True,
+        # MÓDULO 4
+        st.markdown("---")
+        st.markdown("### 🌡️ Módulo 4: Control Térmico de Cadena de Frío (Pre-frío y Contenedores)")
+        t_min_f, t_max_f = funciones.obtener_rango_frio_fruta(
+            producto_sel,
+            temp_min_override=temp_min_limite,
+            temp_max_override=temp_max_limite if producto_sel == "Personalizado" else temp_max_limite,
+        )
+        st.caption(
+            f"Rango óptimo comercial para **{producto_sel}**: "
+            f"{t_min_f} °C a {t_max_f} °C"
+        )
+
+        col_f1, col_f2, col_f3 = st.columns(3)
+        with col_f1:
+            camara_sel = st.selectbox(
+                "Cámara Frigorífica / Túnel:",
+                ["Pre-Cámara 01", "Túnel de Enfriamiento 03", "Cámara de Almacenamiento 05", "Contenedor Reefer Puerto"],
             )
-            t_min_f, t_max_f = funciones.obtener_rango_frio_fruta(
+        with col_f2:
+            valor_temp_default = float(
+                max(t_min_f, min(limit_temp_default, t_max_f))
+            )
+            temp_actual_camara = st.number_input(
+                "Temperatura Registrada (°C):",
+                value=valor_temp_default,
+                step=0.5,
+                format="%.1f",
+            )
+        with col_f3:
+            prev = funciones.validar_temperatura_fruta(
+                temp_actual_camara,
                 producto_sel,
-                temp_min_override=temp_min_limite,
-                temp_max_override=temp_max_limite
-                if producto_sel == "Personalizado"
-                else temp_max_limite,
+                temp_min_override=t_min_f,
+                temp_max_override=t_max_f,
             )
-            st.caption(
-                f"Rango óptimo comercial para **{producto_sel}**: "
-                f"{t_min_f} °C a {t_max_f} °C"
-            )
+            if prev["en_rango"]:
+                st.success(
+                    f"✅ En rango ({prev['temp_min']}–{prev['temp_max']} °C) · "
+                    f"lectura {prev['temperatura']} °C"
+                )
+            else:
+                st.error(
+                    f"🚨 Fuera de rango ({prev['temp_min']}–{prev['temp_max']} °C) · "
+                    f"lectura {prev['temperatura']} °C"
+                )
 
-            col_f1, col_f2 = st.columns(2)
-            with col_f1:
-                st.markdown(
-                    '<p class="sb-card-title">Captura de lectura</p>',
-                    unsafe_allow_html=True,
-                )
-                camara_sel = st.selectbox(
-                    "Cámara frigorífica / túnel:",
-                    [
-                        "Pre-Cámara 01",
-                        "Túnel de Enfriamiento 03",
-                        "Cámara de Almacenamiento 05",
-                        "Contenedor Reefer Puerto",
-                    ],
-                    key="mod4_camara",
-                )
-                valor_temp_default = float(max(t_min_f, min(limit_temp_default, t_max_f)))
-                temp_actual_camara = st.number_input(
-                    "Temperatura registrada (°C):",
-                    value=valor_temp_default,
-                    step=0.5,
-                    format="%.1f",
-                    key="mod4_temp",
-                )
-            with col_f2:
-                st.markdown(
-                    '<p class="sb-card-title">Validar y registrar</p>',
-                    unsafe_allow_html=True,
-                )
-                prev = funciones.validar_temperatura_fruta(
-                    temp_actual_camara,
-                    producto_sel,
-                    temp_min_override=t_min_f,
-                    temp_max_override=t_max_f,
-                )
-                if prev["en_rango"]:
-                    st.success(
-                        f"En rango ({prev['temp_min']}–{prev['temp_max']} °C) · "
-                        f"lectura {prev['temperatura']} °C"
+            if st.button("💾 Registrar lectura de frío"):
+                try:
+                    resultado_frio = funciones.registrar_control_frio(
+                        camara=camara_sel,
+                        temperatura=float(temp_actual_camara),
+                        producto=producto_sel,
+                        inspector=auditor_nombre,
+                        temp_min_override=t_min_f,
+                        temp_max_override=t_max_f,
                     )
-                else:
-                    st.error(
-                        f"Fuera de rango ({prev['temp_min']}–{prev['temp_max']} °C) · "
-                        f"lectura {prev['temperatura']} °C"
-                    )
+                    if resultado_frio["tipo_ui"] == "success":
+                        st.success(resultado_frio["mensaje_ui"])
+                    else:
+                        st.error(resultado_frio["mensaje_ui"])
 
-                if st.button(
-                    "Registrar lectura de frío",
-                    type="primary",
-                    key="btn_mod4_frio",
-                ):
-                    try:
-                        resultado_frio = funciones.registrar_control_frio(
-                            camara=camara_sel,
-                            temperatura=float(temp_actual_camara),
-                            producto=producto_sel,
-                            inspector=auditor_nombre,
-                            temp_min_override=t_min_f,
-                            temp_max_override=t_max_f,
-                        )
-                        if resultado_frio["tipo_ui"] == "success":
-                            st.success(resultado_frio["mensaje_ui"])
-                        else:
-                            st.error(resultado_frio["mensaje_ui"])
+                    if resultado_frio.get("sqlite_ok"):
+                        st.caption(resultado_frio.get("sqlite_msg", "Guardado en SQLite"))
+                    else:
+                        st.warning(resultado_frio.get("sqlite_msg", "Error SQLite"))
 
-                        if resultado_frio.get("sqlite_ok"):
-                            st.caption(resultado_frio.get("sqlite_msg", "Guardado en SQLite"))
-                        else:
-                            st.warning(resultado_frio.get("sqlite_msg", "Error SQLite"))
+                    sb_f = resultado_frio.get("supabase") or {}
+                    if sb_f.get("ok"):
+                        st.caption(f"☁️ Supabase control_frio: {sb_f.get('mensaje')}")
+                    elif sb_f.get("configurado") is False:
+                        st.caption("☁️ Supabase no configurado (solo local).")
+                    else:
+                        st.error(sb_f.get("mensaje") or "Error al enviar control_frio a Supabase")
+                except Exception as e:
+                    st.error(e)
 
-                        sb_f = resultado_frio.get("supabase") or {}
-                        if sb_f.get("ok"):
-                            st.caption(f"Supabase control_frio: {sb_f.get('mensaje')}")
-                        elif sb_f.get("configurado") is False:
-                            st.caption("Supabase no configurado (solo local).")
-                        else:
-                            st.error(
-                                sb_f.get("mensaje") or "Error al enviar control_frio a Supabase"
-                            )
-                    except Exception as e:
-                        st.error(e)
-
-            historial_frio = funciones.cargar_frio_db()
-            if historial_frio:
-                with st.expander("Historial de control de frío (SQLite)"):
-                    st.dataframe(
-                        pd.DataFrame(historial_frio), width="stretch", hide_index=True
-                    )
+        historial_frio = funciones.cargar_frio_db()
+        if historial_frio:
+            with st.expander("Historial de control de frío (SQLite)"):
+                st.dataframe(pd.DataFrame(historial_frio), width="stretch", hide_index=True)
 
         st.markdown("---")
         st.markdown("### 1️⃣ Selección de Columnas para Exportar")
