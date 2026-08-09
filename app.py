@@ -61,23 +61,166 @@ def cargar_credenciales_acceso() -> tuple[str | None, str | None, str | None]:
 if "autenticado" not in st.session_state:
     st.session_state["autenticado"] = False
 
+# Tema visual estilo dashboard (solo presentación; no altera lógica de negocio)
 st.markdown(
     """
     <style>
-    .stButton>button {
-        background-color: #1F4E78;
-        color: white;
+    :root {
+        --sb-bg: #0B0B0F;
+        --sb-card: #12121A;
+        --sb-border: #23232F;
+        --sb-green: #3ECF8E;
+        --sb-text: #EDEDEF;
+        --sb-muted: #9B9BA7;
+    }
+
+    /* Fondo global */
+    .stApp,
+    [data-testid="stAppViewContainer"],
+    [data-testid="stHeader"],
+    section.main {
+        background-color: var(--sb-bg) !important;
+        color: var(--sb-text);
+    }
+    [data-testid="stSidebar"],
+    [data-testid="stSidebarContent"] {
+        background-color: var(--sb-card) !important;
+        border-right: 1px solid var(--sb-border);
+    }
+    [data-testid="stToolbar"] {
+        background: transparent !important;
+    }
+
+    /* Rejilla / columnas: sin tarjeta global (los módulos 1–5 usan columns) */
+    div[data-testid="stHorizontalBlock"] {
+        gap: 1rem;
+        align-items: stretch;
+    }
+
+    /* Tarjetas CSS del shell (via st.container border) */
+    div[data-testid="stVerticalBlockBorderWrapper"] {
+        background-color: var(--sb-card) !important;
+        border: 1px solid var(--sb-border) !important;
+        border-radius: 12px !important;
+        padding: 0.35rem 0.55rem 0.55rem 0.55rem !important;
+        box-shadow: 0 1px 0 rgba(255, 255, 255, 0.02);
+    }
+
+    /* Tipografía y widgets en modo oscuro */
+    h1, h2, h3, h4, p, label, span, .stMarkdown, .stCaption {
+        color: var(--sb-text) !important;
+    }
+    .stCaption, [data-testid="stCaptionContainer"] {
+        color: var(--sb-muted) !important;
+    }
+    div[data-baseweb="select"] > div,
+    .stTextInput input,
+    .stNumberInput input,
+    .stTextArea textarea,
+    [data-baseweb="input"] {
+        background-color: #0E0E14 !important;
+        color: var(--sb-text) !important;
+        border-color: var(--sb-border) !important;
+        border-radius: 8px !important;
+    }
+
+    /* Botones base */
+    .stButton > button {
+        background-color: #1C1C26;
+        color: var(--sb-text);
         border-radius: 8px;
-        font-weight: bold;
-        border: none;
+        font-weight: 600;
+        border: 1px solid var(--sb-border);
         padding: 0.5rem 1rem;
     }
-    .stButton>button:hover {
-        background-color: #153859;
+    .stButton > button:hover {
+        background-color: #23232F;
         color: white;
+        border-color: #2E2E3A;
     }
+
+    /* Botón verde Supabase (primary) */
+    .stButton > button[kind="primary"],
+    .stButton > button[data-testid="baseButton-primary"] {
+        background-color: var(--sb-green) !important;
+        color: #0B0B0F !important;
+        border: none !important;
+        font-weight: 700 !important;
+        border-radius: 8px !important;
+    }
+    .stButton > button[kind="primary"]:hover,
+    .stButton > button[data-testid="baseButton-primary"]:hover {
+        background-color: #35b87d !important;
+        color: #0B0B0F !important;
+    }
+
+    /* Encabezados de tarjeta (HTML) */
+    .sb-card-title {
+        font-size: 0.72rem;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--sb-muted);
+        font-weight: 600;
+        margin: 0 0 0.35rem 0;
+    }
+    .sb-card-heading {
+        font-size: 1.05rem;
+        font-weight: 700;
+        color: var(--sb-text);
+        margin: 0 0 0.75rem 0;
+        line-height: 1.3;
+    }
+    .sb-pill {
+        display: inline-block;
+        padding: 0.15rem 0.55rem;
+        border-radius: 999px;
+        font-size: 0.75rem;
+        font-weight: 600;
+        border: 1px solid var(--sb-border);
+        background: #0E0E14;
+        color: var(--sb-muted);
+        margin-bottom: 0.6rem;
+    }
+    .sb-pill.ok {
+        color: #0B0B0F;
+        background: var(--sb-green);
+        border-color: transparent;
+    }
+    .sb-pill.warn {
+        color: #FBBF24;
+        border-color: #3A3118;
+        background: #1A1608;
+    }
+    .sb-status-row {
+        display: flex;
+        justify-content: space-between;
+        gap: 0.5rem;
+        padding: 0.45rem 0;
+        border-bottom: 1px solid var(--sb-border);
+        font-size: 0.85rem;
+    }
+    .sb-status-row span:first-child { color: var(--sb-muted); }
+    .sb-status-row span:last-child { color: var(--sb-text); font-weight: 600; text-align: right; word-break: break-all; }
+    .sb-hero-bar {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: baseline;
+        justify-content: space-between;
+        gap: 0.5rem 1rem;
+        margin-bottom: 1rem;
+        padding: 0.85rem 1rem;
+        background: var(--sb-card);
+        border: 1px solid var(--sb-border);
+        border-radius: 12px;
+    }
+    .sb-hero-bar h1 {
+        font-size: 1.25rem !important;
+        margin: 0 !important;
+        font-weight: 700 !important;
+    }
+    .sb-hero-meta { color: var(--sb-muted); font-size: 0.85rem; }
     </style>
-""",
+    """,
     unsafe_allow_html=True,
 )
 
@@ -209,12 +352,18 @@ if not st.session_state["autenticado"]:
             st.error("Usuario o contraseña incorrectos. Inténtelo de nuevo.")
     st.stop()
 
-st.title("Plataforma de control de calidad, trazabilidad, contenedores y planta")
 nombre_planta = cargar_nombre_planta()
-if nombre_planta:
-    st.caption(f"Planta: {nombre_planta}")
-st.write(
-    "Sistema integral optimizado con motor criptográfico: GS1, balanzas, LMR SENASA, trazabilidad inversa, control de frío y gestión de precintos de contenedor."
+st.markdown(
+    f"""
+    <div class="sb-hero-bar">
+      <div>
+        <h1>Plataforma de control de calidad y planta</h1>
+        <div class="sb-hero-meta">GS1 · balanzas · LMR · trazabilidad · frío · precintos · sello ECC</div>
+      </div>
+      <div class="sb-hero-meta">Planta: <strong style="color:#EDEDEF">{nombre_planta or "Planta Autorizada"}</strong></div>
+    </div>
+    """,
+    unsafe_allow_html=True,
 )
 
 funciones.inicializar_base_datos()
@@ -225,62 +374,7 @@ if "lote_congelado" not in st.session_state:
 if "mostrar_vacios" not in st.session_state:
     st.session_state["mostrar_vacios"] = False
 
-st.sidebar.header("⚙️ Parámetros de Planta & Destino")
-
-auditor_nombre = st.sidebar.text_input("Inspector Asignado:", value="Control de Calidad")
-producto_sel = st.sidebar.selectbox(
-    "Cultivo / Fruta:", ["Palta Hass", "Arándano", "Espárrago", "Uva Red Globe", "Personalizado"]
-)
-
-mercado_destino = st.sidebar.selectbox(
-    "🌍 Mercado de Destino:", ["Europa (GlobalGAP/UE)", "Estados Unidos (FDA/USDA)", "Asia / China", "Chile / Local"]
-)
-
-if producto_sel == "Palta Hass":
-    limit_temp_default = 5.0  # centro del rango 4.0–6.0
-    limit_brix_default = 21.0
-elif producto_sel == "Arándano":
-    limit_temp_default = 0.0  # centro del rango -0.5–0.5
-    limit_brix_default = 11.5
-elif producto_sel == "Espárrago":
-    limit_temp_default = 3.0  # centro del rango 2.0–4.0
-    limit_brix_default = 8.0
-elif producto_sel == "Uva Red Globe":
-    limit_temp_default = -0.5  # centro del rango -1.0–0.0
-    limit_brix_default = 16.0
-else:
-    limit_temp_default = 4.0
-    limit_brix_default = 10.0
-
-# Rangos comerciales de cadena de frío (fuente: diccionario en funciones)
-_tmin_fruta, _tmax_fruta = funciones.obtener_rango_frio_fruta(producto_sel)
-if producto_sel == "Personalizado":
-    temp_min_limite = st.sidebar.number_input("Temp. Mínima Cámara (°C):", value=limit_temp_default, step=0.5)
-    temp_max_limite = st.sidebar.number_input(
-        "Temp. Máxima Cámara (°C):", value=limit_temp_default + 2.0, step=0.5
-    )
-else:
-    temp_min_limite = _tmin_fruta
-    temp_max_limite = _tmax_fruta
-    st.sidebar.caption(
-        f"Cadena de frío ({producto_sel}): **{temp_min_limite} °C** a **{temp_max_limite} °C**"
-    )
-
-brix_min_limite = st.sidebar.number_input("Materia Seca / Brix Mínimo:", value=limit_brix_default, step=0.5)
-
-st.sidebar.subheader("📦 Tolerancias Logísticas")
-peso_min_caja = st.sidebar.number_input("Peso Mínimo Neto Caja (kg):", value=4.0, step=0.1)
-max_merma_permitida = st.sidebar.number_input("Límite Máximo de Merma (%):", value=5.0, step=0.5)
-
-# ─── Módulo 6: Escaneo QR de pallets (no requiere Excel) ───
-st.markdown("---")
-st.markdown("### 📷 Módulo 6: Escaneo QR del Pallet (Validación ERP / Supabase)")
-st.caption(
-    "Active el escáner solo cuando lo necesite. Tras capturar el QR y consultar Supabase, "
-    "la cámara se apaga sola para liberar el lente del celular."
-)
-
-# Cámara apagada por defecto (no montar st.camera_input de forma permanente)
+# Cámara QR apagada por defecto
 if "camara_qr_activa" not in st.session_state:
     st.session_state["camara_qr_activa"] = False
 if "camera_qr_token" not in st.session_state:
@@ -291,7 +385,6 @@ def _apagar_camara_qr():
     """Desmonta st.camera_input y libera el lente del dispositivo."""
     st.session_state["camara_qr_activa"] = False
     st.session_state["camera_qr_token"] = int(st.session_state.get("camera_qr_token") or 0) + 1
-    # Limpia valor residual del widget de cámara (claves previas)
     for k in list(st.session_state.keys()):
         if str(k).startswith("camera_escaneo_qr_"):
             try:
@@ -300,98 +393,276 @@ def _apagar_camara_qr():
                 pass
 
 
-col_qr1, col_qr2 = st.columns([1, 1])
-with col_qr1:
-    if not st.session_state["camara_qr_activa"]:
-        st.info("Lente apagado. Pulse el botón para activar el escáner.")
-        if st.button("📷 Activar Escáner QR", type="primary", key="btn_activar_escaner_qr"):
-            st.session_state["camara_qr_activa"] = True
-            st.rerun()
-    else:
-        st.caption("Escáner activo — apunte al QR y use el disparador de la cámara.")
-        foto_qr = st.camera_input(
-            "Cámara web / celular — apunte al código QR del pallet",
-            key=f"camera_escaneo_qr_{st.session_state['camera_qr_token']}",
-        )
-        if st.button("🛑 Apagar cámara", key="btn_apagar_camara_qr"):
-            _apagar_camara_qr()
-            st.rerun()
+# ─── Shell dashboard 3 columnas [1, 2, 1] ─────────────────────────────────────
+col_izq, col_cen, col_der = st.columns([1, 2, 1])
 
-        # Captura → consulta Supabase → apagar lente al instante
-        if foto_qr is not None:
-            try:
-                with st.spinner("Decodificando QR y consultando Supabase…"):
-                    resultado_qr = funciones.procesar_escaneo_qr_camara(foto_qr.getvalue())
-                st.session_state["ultimo_resultado_qr"] = resultado_qr
-            except Exception as e:
-                st.session_state["ultimo_resultado_qr"] = {
-                    "verificado": False,
-                    "tipo_ui": "error",
-                    "mensaje_ui": f"Error en escaneo QR: {e}",
-                }
-            _apagar_camara_qr()
-            st.rerun()
-
-with col_qr2:
-    st.markdown("**Opciones de respaldo** (sin cámara)")
-    img_qr_upload = st.file_uploader(
-        "Subir foto del QR (si no hay cámara)",
-        type=["png", "jpg", "jpeg", "webp"],
-        key="upload_foto_qr_pallet",
-    )
-    texto_qr_manual = st.text_area(
-        "O pegue el texto del QR (JSON / hash / lote|hash):",
-        height=100,
-        key="texto_manual_qr_pallet",
-        placeholder='{"lote":"L-001","hash_sha256":"abc...64 hex"}',
-    )
-    if st.button("🔍 Validar respaldo en Supabase", key="btn_validar_qr_respaldo"):
-        imagen_bytes = img_qr_upload.getvalue() if img_qr_upload is not None else None
-        try:
-            if imagen_bytes:
-                resultado_qr = funciones.procesar_escaneo_qr_camara(imagen_bytes)
-            elif texto_qr_manual and texto_qr_manual.strip():
-                resultado_qr = funciones.validar_pallet_por_qr(texto_qr=texto_qr_manual.strip())
-            else:
-                st.warning("Suba una imagen o pegue el texto del QR.")
-                resultado_qr = None
-            if resultado_qr is not None:
-                st.session_state["ultimo_resultado_qr"] = resultado_qr
-        except Exception as e:
-            st.error(f"Error en escaneo QR: {e}")
-
-resultado_qr_ui = st.session_state.get("ultimo_resultado_qr")
-if resultado_qr_ui:
-    if resultado_qr_ui.get("tipo_ui") == "success":
-        st.success(
-            resultado_qr_ui.get("mensaje_ui")
-            or "✅ Pallet verificado de forma segura mediante QR en Supabase."
-        )
-    else:
-        st.error(
-            resultado_qr_ui.get("mensaje_ui")
-            or "🚨 ALERTA: no se pudo verificar el pallet contra Supabase."
+# ── Columna izquierda: Parámetros de Planta ───────────────────────────────────
+with col_izq:
+    with st.container(border=True):
+        st.markdown(
+            '<p class="sb-card-title">Configuración</p>'
+            '<p class="sb-card-heading">Parámetros de planta</p>',
+            unsafe_allow_html=True,
         )
 
-    payload_qr = resultado_qr_ui.get("payload") or {}
-    if payload_qr:
+        auditor_nombre = st.text_input("Inspector asignado:", value="Control de Calidad", key="dash_inspector")
+        producto_sel = st.selectbox(
+            "Cultivo / fruta:",
+            ["Palta Hass", "Arándano", "Espárrago", "Uva Red Globe", "Personalizado"],
+            key="dash_producto",
+        )
+        mercado_destino = st.selectbox(
+            "Mercado de destino:",
+            ["Europa (GlobalGAP/UE)", "Estados Unidos (FDA/USDA)", "Asia / China", "Chile / Local"],
+            key="dash_mercado",
+        )
+
+        if producto_sel == "Palta Hass":
+            limit_temp_default = 5.0
+            limit_brix_default = 21.0
+        elif producto_sel == "Arándano":
+            limit_temp_default = 0.0
+            limit_brix_default = 11.5
+        elif producto_sel == "Espárrago":
+            limit_temp_default = 3.0
+            limit_brix_default = 8.0
+        elif producto_sel == "Uva Red Globe":
+            limit_temp_default = -0.5
+            limit_brix_default = 16.0
+        else:
+            limit_temp_default = 4.0
+            limit_brix_default = 10.0
+
+        _tmin_fruta, _tmax_fruta = funciones.obtener_rango_frio_fruta(producto_sel)
+        if producto_sel == "Personalizado":
+            temp_min_limite = st.number_input(
+                "Temp. mínima cámara (°C):", value=limit_temp_default, step=0.5, key="dash_tmin"
+            )
+            temp_max_limite = st.number_input(
+                "Temp. máxima cámara (°C):", value=limit_temp_default + 2.0, step=0.5, key="dash_tmax"
+            )
+        else:
+            temp_min_limite = _tmin_fruta
+            temp_max_limite = _tmax_fruta
+            st.caption(f"Cadena de frío: **{temp_min_limite} °C** a **{temp_max_limite} °C**")
+
+        brix_min_limite = st.number_input(
+            "Materia seca / Brix mínimo:", value=limit_brix_default, step=0.5, key="dash_brix"
+        )
+        st.markdown("---")
+        st.caption("Tolerancias logísticas")
+        peso_min_caja = st.number_input(
+            "Peso mínimo neto caja (kg):", value=4.0, step=0.1, key="dash_peso"
+        )
+        max_merma_permitida = st.number_input(
+            "Límite máximo de merma (%):", value=5.0, step=0.5, key="dash_merma"
+        )
+
+# ── Columna centro: Módulo 6 Escaneo QR ───────────────────────────────────────
+with col_cen:
+    with st.container(border=True):
+        st.markdown(
+            '<p class="sb-card-title">Supabase · historial_reportes</p>'
+            '<p class="sb-card-heading">Módulo 6 — Escaneo QR del pallet</p>',
+            unsafe_allow_html=True,
+        )
         st.caption(
-            f"Lote extraído: `{payload_qr.get('lote') or 'N/D'}` · "
-            f"Hash: `{(payload_qr.get('hash_sha256') or 'N/D')[:24]}"
-            f"{'…' if payload_qr.get('hash_sha256') and len(payload_qr.get('hash_sha256') or '') > 24 else ''}`"
+            "Active el escáner solo cuando lo necesite. Tras capturar el QR y consultar Supabase, "
+            "la cámara se apaga sola para liberar el lente del celular."
         )
-    reg = resultado_qr_ui.get("registro")
-    if reg:
-        with st.expander("Registro en historial_reportes (Supabase)"):
-            st.json(reg)
-    sb_qr = resultado_qr_ui.get("supabase") or {}
-    if sb_qr and not resultado_qr_ui.get("verificado"):
-        with st.expander("Detalle consulta Supabase"):
-            st.write(sb_qr.get("mensaje"))
-            st.caption(f"Endpoint: `{sb_qr.get('endpoint')}`")
-            if sb_qr.get("filas") is not None:
-                st.json(sb_qr.get("filas"))
 
+        if not st.session_state["camara_qr_activa"]:
+            st.info("Lente apagado. Pulse el botón verde para activar el escáner.")
+            if st.button(
+                "📷 Activar Escáner QR",
+                type="primary",
+                key="btn_activar_escaner_qr",
+            ):
+                st.session_state["camara_qr_activa"] = True
+                st.rerun()
+        else:
+            st.caption("Escáner activo — apunte al QR y use el disparador de la cámara.")
+            foto_qr = st.camera_input(
+                "Cámara web / celular — apunte al código QR del pallet",
+                key=f"camera_escaneo_qr_{st.session_state['camera_qr_token']}",
+            )
+            if st.button("🛑 Apagar cámara", key="btn_apagar_camara_qr"):
+                _apagar_camara_qr()
+                st.rerun()
+
+            if foto_qr is not None:
+                try:
+                    with st.spinner("Decodificando QR y consultando Supabase…"):
+                        resultado_qr = funciones.procesar_escaneo_qr_camara(foto_qr.getvalue())
+                    st.session_state["ultimo_resultado_qr"] = resultado_qr
+                except Exception as e:
+                    st.session_state["ultimo_resultado_qr"] = {
+                        "verificado": False,
+                        "tipo_ui": "error",
+                        "mensaje_ui": f"Error en escaneo QR: {e}",
+                    }
+                _apagar_camara_qr()
+                st.rerun()
+
+        st.markdown("---")
+        with st.expander("Opciones de respaldo (sin cámara)"):
+            img_qr_upload = st.file_uploader(
+                "Subir foto del QR",
+                type=["png", "jpg", "jpeg", "webp"],
+                key="upload_foto_qr_pallet",
+            )
+            texto_qr_manual = st.text_area(
+                "O pegue el texto del QR (JSON / hash / lote|hash):",
+                height=100,
+                key="texto_manual_qr_pallet",
+                placeholder='{"lote":"L-001","hash_sha256":"abc...64 hex"}',
+            )
+            if st.button("🔍 Validar respaldo en Supabase", key="btn_validar_qr_respaldo"):
+                imagen_bytes = img_qr_upload.getvalue() if img_qr_upload is not None else None
+                try:
+                    if imagen_bytes:
+                        resultado_qr = funciones.procesar_escaneo_qr_camara(imagen_bytes)
+                    elif texto_qr_manual and texto_qr_manual.strip():
+                        resultado_qr = funciones.validar_pallet_por_qr(
+                            texto_qr=texto_qr_manual.strip()
+                        )
+                    else:
+                        st.warning("Suba una imagen o pegue el texto del QR.")
+                        resultado_qr = None
+                    if resultado_qr is not None:
+                        st.session_state["ultimo_resultado_qr"] = resultado_qr
+                except Exception as e:
+                    st.error(f"Error en escaneo QR: {e}")
+
+        resultado_qr_ui = st.session_state.get("ultimo_resultado_qr")
+        if resultado_qr_ui:
+            if resultado_qr_ui.get("tipo_ui") == "success":
+                st.success(
+                    resultado_qr_ui.get("mensaje_ui")
+                    or "✅ Pallet verificado de forma segura mediante QR en Supabase."
+                )
+            else:
+                st.error(
+                    resultado_qr_ui.get("mensaje_ui")
+                    or "🚨 ALERTA: no se pudo verificar el pallet contra Supabase."
+                )
+
+            payload_qr = resultado_qr_ui.get("payload") or {}
+            if payload_qr:
+                st.caption(
+                    f"Lote extraído: `{payload_qr.get('lote') or 'N/D'}` · "
+                    f"Hash: `{(payload_qr.get('hash_sha256') or 'N/D')[:24]}"
+                    f"{'…' if payload_qr.get('hash_sha256') and len(payload_qr.get('hash_sha256') or '') > 24 else ''}`"
+                )
+            reg = resultado_qr_ui.get("registro")
+            if reg:
+                with st.expander("Registro en historial_reportes (Supabase)"):
+                    st.json(reg)
+            sb_qr = resultado_qr_ui.get("supabase") or {}
+            if sb_qr and not resultado_qr_ui.get("verificado"):
+                with st.expander("Detalle consulta Supabase"):
+                    st.write(sb_qr.get("mensaje"))
+                    st.caption(f"Endpoint: `{sb_qr.get('endpoint')}`")
+                    if sb_qr.get("filas") is not None:
+                        st.json(sb_qr.get("filas"))
+
+# ── Columna derecha: Estado BD + verificación ECC ─────────────────────────────
+with col_der:
+    with st.container(border=True):
+        st.markdown(
+            '<p class="sb-card-title">Infraestructura</p>'
+            '<p class="sb-card-heading">Estado de base de datos</p>',
+            unsafe_allow_html=True,
+        )
+
+        # Solo lectura de secrets / estado de sesión (sin writes a Supabase)
+        _sb_url, _sb_key, _sb_err = None, None, None
+        try:
+            _sb_url, _sb_key, _sb_err = funciones._supabase_config()
+        except Exception as _e_sb:
+            _sb_err = str(_e_sb)
+
+        if _sb_url and _sb_key and not _sb_err:
+            st.markdown(
+                '<span class="sb-pill ok">Supabase conectado</span>',
+                unsafe_allow_html=True,
+            )
+            st.markdown(
+                f"""
+                <div class="sb-status-row"><span>Proyecto</span><span>{(_sb_url or "")[:36]}…</span></div>
+                <div class="sb-status-row"><span>Tabla sellos</span><span>historial_reportes</span></div>
+                <div class="sb-status-row"><span>API key</span><span>configurada</span></div>
+                """,
+                unsafe_allow_html=True,
+            )
+        else:
+            st.markdown(
+                '<span class="sb-pill warn">Supabase no configurado</span>',
+                unsafe_allow_html=True,
+            )
+            if _sb_err:
+                st.caption(str(_sb_err)[:180])
+
+        st.markdown(
+            f"""
+            <div class="sb-status-row"><span>SQLite local</span><span>planta_calidad_prod.db</span></div>
+            <div class="sb-status-row"><span>Último POST sello</span>
+            <span>{"OK" if (st.session_state.get("ultimo_supabase") or {}).get("ok") else (st.session_state.get("ultimo_supabase") or {}).get("mensaje", "—")[:40]}</span></div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+        ultimo_hash = st.session_state.get("ultimo_hash_reporte")
+        if ultimo_hash:
+            st.caption(f"Último hash de sesión: `{str(ultimo_hash)[:20]}…`")
+
+        st.markdown("---")
+        st.markdown(
+            '<p class="sb-card-title">Criptografía</p>'
+            '<p class="sb-card-heading">Verificación ECC</p>',
+            unsafe_allow_html=True,
+        )
+
+        try:
+            _modo_ecc = motor_planta.modo_firma_activo()
+            _backend_ecc = motor_planta.motor_activo()
+            _diag_ecc = motor_planta.diagnostico()
+            _pub_oficial = motor_planta.llave_publica_oficial_hex()
+        except Exception:
+            _modo_ecc, _backend_ecc, _diag_ecc, _pub_oficial = "n/d", "n/d", "n/d", None
+
+        if _modo_ecc == "real":
+            st.markdown(
+                '<span class="sb-pill ok">Ed25519 real</span>',
+                unsafe_allow_html=True,
+            )
+        else:
+            st.markdown(
+                '<span class="sb-pill warn">Modo demo / revisión</span>',
+                unsafe_allow_html=True,
+            )
+
+        st.markdown(
+            f"""
+            <div class="sb-status-row"><span>Modo firma</span><span>{_modo_ecc}</span></div>
+            <div class="sb-status-row"><span>Backend</span><span>{_backend_ecc}</span></div>
+            """,
+            unsafe_allow_html=True,
+        )
+        if _pub_oficial:
+            st.caption(f"Llave pública oficial: `{_pub_oficial[:16]}…`")
+        st.caption(f"Diagnóstico: {_diag_ecc}")
+
+        qr_ui = st.session_state.get("ultimo_resultado_qr")
+        if qr_ui:
+            if qr_ui.get("verificado"):
+                st.success("Último QR: verificado")
+            else:
+                st.warning("Último QR: no verificado / alerta")
+
+        st.caption("PDF firmado: use **Verificación pública ECC** en la barra de navegación.")
+
+# ─── Carga de archivo y módulos 1–5 (lógica intacta) ─────────────────────────
 archivo = st.file_uploader(
     "Cargar Base de Datos de Recepción / Empaque (Excel o CSV)", type=["xlsx", "csv"]
 )
