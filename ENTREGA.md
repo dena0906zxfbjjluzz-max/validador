@@ -36,8 +36,7 @@ Usar al **vender código + GitHub** o al poner la app en producción por primera
 | Esquema Supabase | Soporte 24×7 sin contrato aparte |
 | | Capacitación presencial sin horas extras |
 
-**Precio de referencia de venta del código (PE):** S/ 28 000 + IGV (negociable).  
-**Onboarding instalado (opcional):** cotizar aparte (típico S/ 3 000 – 8 000).
+**Precios, plazos y soporte** se define en cotización o contrato (no se publican en el repositorio).
 
 ## D. Firma de cierre
 

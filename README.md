@@ -188,9 +188,9 @@ CSV limpio exportable para cargar en ERP a mano o con un integrador.
 
 ---
 
-## Venta del código (referencia pública)
+## Entrega del código (documentación pública)
 
-Todo el material de entrega está en este repositorio **público** (o el que publiques):
+Material de este repositorio para instalar o transferir el proyecto:
 
 | Entrega | Enlace |
 |---------|--------|
@@ -201,13 +201,10 @@ Todo el material de entrega está en este repositorio **público** (o el que pub
 | Archivo demo packing | [demo/packing_demo.csv](demo/packing_demo.csv) |
 | Plantilla de secrets | [.streamlit/secrets.toml.example](.streamlit/secrets.toml.example) |
 
-**Precio de referencia — venta del código fuente + GitHub (Perú):**  
-**S/ 28 000 + IGV** (una sola vez, negociable).
+**No incluye por defecto:** hosting del vendedor, secrets de producción, soporte 24×7, SAP/Oracle nativo, balanza serial industrial.  
+Condiciones comerciales, precios y soporte se acuerdan **fuera del README** (cotización / contrato).
 
-**No incluye por defecto:** hosting, secrets del vendedor, soporte 24×7, SAP/Oracle nativo, balanza serial industrial.  
-**Onboarding instalado (opcional):** cotizar aparte (típico S/ 3 000 – 8 000).
-
-Detalle del checklist y firmas de recepción: **[ENTREGA.md](ENTREGA.md)**.
+Checklist formal: **[ENTREGA.md](ENTREGA.md)**.
 
 ---
 
