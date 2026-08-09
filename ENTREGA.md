@@ -1,51 +1,37 @@
-# Checklist de cierre / entrega del Validador
+# ACTA DE CONFORMIDAD Y ENTREGA FINAL — VALIDADOR DE PLANTA (V1)
 
-Usar al **vender código + GitHub** o al poner la app en producción por primera vez.
+Por el presente documento, **EL COMITENTE** deja constancia de la recepción conforme de la suite tecnológica provista por **EL LOCADOR**, dando por finalizada la fase de desarrollo e implementación según los términos acordados.
 
-## A. Entrega de código
+## Checklist de Validación en Planta
 
-- [ ] Repo GitHub accesible (o ZIP con historial Git)
-- [ ] Branch `main` estable (sin cambios locales sin commit)
-- [ ] Existe `README.md`, `INSTALACION.md`, `ENTREGA.md`, `CONTRATO_TRASPASO.md`
-- [ ] Existe `supabase/schema.sql`
-- [ ] Existe `demo/packing_demo.csv`
-- [ ] Existe `.streamlit/secrets.toml.example` (sin contraseñas reales)
-- [ ] Confirmado: **NO** se copian secrets reales del vendedor al comprador
+El personal de control de calidad e infraestructura de TI ha verificado satisfactoriamente la operación de los siguientes módulos en el entorno de producción (`Streamlit Cloud + Supabase`):
 
-## B. Puesta en marcha (cliente)
+- [ ] **Módulo 1: Balanza y SSCC:** Registro correcto del campo `PESO` en la base de datos y búsqueda instantánea de pallets/lotes.
+- [ ] **Módulo 2: LMR / SENASA:** Consulta en tiempo real de los veredictos de laboratorio y alertas de límites de residuos según mercado destino.
+- [ ] **Módulo 3: Trazabilidad Inversa:** Desglose limpio del origen del pallet (Fundo, Productor, Turno y Lote) desde el archivo CSV/Excel cargado.
+- [ ] **Módulo 4: Cadena de Frío:** Registro y almacenamiento correcto de lecturas de túnel y Reefer en la tabla `public.control_frio`.
+- [ ] **Módulo 5: Contenedores y Precintos:** Validación del formulario de despacho y guardado de precintos ISO 6346.
+- [ ] **Módulo 6: Escaneo QR del Pallet:** Activación correcta de la cámara del celular, escaneo del código físico y consulta exitosa a la tabla `public.historial_reportes`.
 
-- [ ] Python 3.10+ o app en Streamlit Cloud
-- [ ] `pip install -r requirements.txt` (o deploy Cloud)
-- [ ] `secrets.toml` / Secrets Cloud con usuario, clave, `LLAVE_PRIVADA`
-- [ ] Login OK
-- [ ] Carga `demo/packing_demo.csv` OK
-- [ ] Panel **Criptografía**: modo **real** (si hay llave válida)
-- [ ] Supabase (si contratado): SQL ejecutado + URL/KEY
-- [ ] Una lectura de frío guardada
-- [ ] Un contenedor sellado (formulario o demo)
-- [ ] Un sello ECC + descarga PDF (opcional en la misma sesión)
-- [ ] Verificación pública ECC abre sin login de planta
+## Criptografía y Seguridad Operativa
 
-## C. Contrato / alcance comercial (recomendado)
+- [ ] **Firma Criptográfica Ed25519:** Verificación de que cada reporte PDF se sella con la `LLAVE_PRIVADA` institucional única del cliente.
+- [ ] **Verificación Pública ECC:** Comprobación externa desde el flujo público ECC, permitiendo auditar la integridad del PDF sin credenciales de planta.
+- [ ] **Cortafuego y Bitácora:** Validación del sistema de login con bloqueo de intentos y registro local de operaciones.
 
-| Incluido en v1 | No incluido por defecto |
-|----------------|-------------------------|
-| Código fuente + este paquete | Hosting / dominio de producción del vendedor |
-| Guía de instalación | SAP / Oracle nativo |
-| CSV de demo | Balanza puerto serial industrial |
-| Esquema Supabase | Soporte 24×7 sin contrato aparte |
-| | Capacitación presencial sin horas extras |
+## Conformidad de Cierre
 
-**Precios, plazos y soporte** se definen en cotización o en [CONTRATO_TRASPASO.md](CONTRATO_TRASPASO.md) (plantilla; no hay precio fijo en el repositorio).
+Al marcar este checklist, **EL COMITENTE** declara su total satisfacción con el rendimiento técnico de la plataforma y da por ejecutada la entrega, dando inicio al periodo de **3 meses de soporte técnico y garantía** estipulados en el contrato.
 
-## D. Firma de cierre
+**Fecha de Entrega:** ____ de ______________ de 2026
 
-| Campo | Dato |
-|-------|------|
-| Fecha entrega | |
-| Versión / commit Git | |
-| Entregado por | |
-| Recibido por | |
-| Notas | |
+| | Por el Comitente | Por el Locador |
+|--|------------------|----------------|
+| Nombre | Jefe de TI / Operaciones Planta | Denilson Aure |
+| Firma | ______________________________ | ______________________________ |
+| Fecha | | |
 
-Con A+B completos, la app se considera **cerrada para entrega v1**.
+---
+
+*Acta de conformidad del paquete de entrega Validador de planta v1. Completar fechas y firmas al momento del cierre en planta.*  
+*Plantilla complementaria de traspaso de código: [CONTRATO_TRASPASO.md](CONTRATO_TRASPASO.md).*
