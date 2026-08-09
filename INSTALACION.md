@@ -71,7 +71,7 @@ cp .streamlit/secrets.toml.example .streamlit/secrets.toml
 python -c "import secrets; print(secrets.token_hex(32))"
 ```
 
-Guarde el valor en `LLAVE_PRIVADA`. No la publique.
+Guarde el valor en `LLAVE_PRIVADA`.
 
 ### Streamlit Cloud
 
