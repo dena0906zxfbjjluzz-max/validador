@@ -86,9 +86,12 @@ st.markdown(
         --sb-radius: 12px;
     }
 
-    html, body, .stApp, [data-testid="stAppViewContainer"], section.main {
-        font-family: "DM Sans", "Segoe UI", sans-serif !important;
+    html, body, [data-testid="stAppViewContainer"] {
+        font-family: "DM Sans", "Segoe UI", system-ui, sans-serif;
     }
+
+    /* CRÍTICO: no forzar font/color en TODOS los span — rompe Material Icons
+       (texto "keyboard_dou…", "uploadupload", solapes de expander) */
 
     /* Fondo con sutil malla (estilo overview Supabase) */
     .stApp,
@@ -112,12 +115,23 @@ st.markdown(
     [data-testid="stSidebarContent"] {
         background-color: var(--sb-card) !important;
         border-right: 1px solid var(--sb-border);
+        overflow-x: hidden !important;
     }
     [data-testid="stToolbar"] { background: transparent !important; }
 
+    /* Contención de columnas: evita que widgets se salgan al card vecino */
     div[data-testid="stHorizontalBlock"] {
-        gap: 1rem;
-        align-items: stretch;
+        gap: 0.85rem;
+        align-items: flex-start;
+    }
+    div[data-testid="column"] {
+        min-width: 0 !important;
+        overflow: hidden !important;
+        max-width: 100%;
+    }
+    section.main .block-container {
+        padding-top: 1.25rem;
+        max-width: 1400px;
     }
 
     div[data-testid="stVerticalBlockBorderWrapper"] {
@@ -126,17 +140,73 @@ st.markdown(
             var(--sb-card) !important;
         border: 1px solid var(--sb-border) !important;
         border-radius: var(--sb-radius) !important;
-        padding: 0.45rem 0.65rem 0.7rem 0.65rem !important;
+        padding: 0.55rem 0.75rem 0.85rem 0.75rem !important;
         box-shadow: 0 1px 0 rgba(255, 255, 255, 0.03), 0 12px 40px rgba(0, 0, 0, 0.28);
+        overflow: hidden !important;
+        max-width: 100%;
     }
 
-    h1, h2, h3, h4, p, label, span, .stMarkdown, .stCaption {
+    /* Tipografía segura (sin romper íconos) */
+    [data-testid="stMarkdownContainer"] h1,
+    [data-testid="stMarkdownContainer"] h2,
+    [data-testid="stMarkdownContainer"] h3,
+    [data-testid="stMarkdownContainer"] h4,
+    [data-testid="stMarkdownContainer"] p,
+    [data-testid="stWidgetLabel"] p,
+    .stCaption,
+    [data-testid="stCaptionContainer"] {
         color: var(--sb-text) !important;
-        font-family: "DM Sans", "Segoe UI", sans-serif !important;
+        font-family: "DM Sans", "Segoe UI", system-ui, sans-serif !important;
     }
-    .stCaption, [data-testid="stCaptionContainer"] {
+    .stCaption, [data-testid="stCaptionContainer"],
+    [data-testid="stCaptionContainer"] p {
         color: var(--sb-muted) !important;
     }
+
+    /* Material Icons: restaurar fuente ligature (evita "keyboard_dou" a texto) */
+    [data-testid="stIconMaterial"],
+    span[data-testid="stIconMaterial"],
+    .material-symbols-rounded,
+    .material-symbols-outlined,
+    span.material-symbols-rounded,
+    span.material-symbols-outlined {
+        font-family: "Material Symbols Rounded", "Material Symbols Outlined", sans-serif !important;
+        font-weight: normal !important;
+        font-style: normal !important;
+        font-size: 1.25rem !important;
+        line-height: 1 !important;
+        letter-spacing: normal !important;
+        text-transform: none !important;
+        display: inline-block !important;
+        white-space: nowrap !important;
+        word-wrap: normal !important;
+        overflow: hidden !important;
+        width: 1.25rem !important;
+        max-width: 1.25rem !important;
+        height: 1.25rem !important;
+        direction: ltr !important;
+        -webkit-font-feature-settings: "liga" !important;
+        font-feature-settings: "liga" !important;
+        -webkit-font-smoothing: antialiased !important;
+        color: inherit !important;
+        -webkit-text-fill-color: currentColor !important;
+        background: none !important;
+        background-clip: unset !important;
+    }
+
+    /* Botón colapsar sidebar: no se desborda hacia el main */
+    [data-testid="stSidebarCollapsedControl"],
+    [data-testid="collapsedControl"] {
+        z-index: 100 !important;
+        max-width: 2.5rem !important;
+        overflow: hidden !important;
+    }
+    [data-testid="stSidebarCollapsedControl"] [data-testid="stIconMaterial"],
+    [data-testid="collapsedControl"] [data-testid="stIconMaterial"] {
+        width: 1.25rem !important;
+        overflow: hidden !important;
+    }
+
     div[data-baseweb="select"] > div,
     .stTextInput input,
     .stNumberInput input,
@@ -155,7 +225,9 @@ st.markdown(
         font-weight: 600;
         border: 1px solid var(--sb-border);
         padding: 0.5rem 1rem;
-        font-family: "DM Sans", sans-serif !important;
+        font-family: "DM Sans", "Segoe UI", system-ui, sans-serif !important;
+        white-space: normal;
+        overflow: hidden;
     }
     .stButton > button:hover {
         background-color: #162030;
@@ -178,20 +250,66 @@ st.markdown(
         color: #04110F !important;
     }
 
+    /* Expand / file uploader: contener overflow y texto doble */
+    [data-testid="stExpander"] {
+        overflow: hidden !important;
+        border-radius: 10px !important;
+        border: 1px solid var(--sb-border) !important;
+        background: var(--sb-input) !important;
+    }
+    [data-testid="stExpander"] details,
+    [data-testid="stExpander"] summary {
+        overflow: hidden !important;
+        max-width: 100% !important;
+    }
+    [data-testid="stExpander"] summary {
+        white-space: normal !important;
+        word-break: break-word !important;
+    }
+    [data-testid="stFileUploader"] {
+        background: var(--sb-input) !important;
+        border: 1px dashed var(--sb-border-soft) !important;
+        border-radius: 12px !important;
+        padding: 0.65rem !important;
+        overflow: hidden !important;
+        max-width: 100% !important;
+    }
+    [data-testid="stFileUploader"] section,
+    [data-testid="stFileUploaderDropzone"] {
+        overflow: hidden !important;
+        max-width: 100% !important;
+    }
+    [data-testid="stFileUploader"] button {
+        overflow: hidden !important;
+        max-width: 100% !important;
+    }
+    [data-testid="stCameraInput"] {
+        overflow: hidden !important;
+        max-width: 100% !important;
+        border-radius: 10px;
+    }
+    [data-testid="stCameraInput"] img,
+    [data-testid="stCameraInput"] video {
+        max-width: 100% !important;
+        height: auto !important;
+        border-radius: 8px;
+    }
+
     .sb-card-title {
         font-size: 0.7rem;
         letter-spacing: 0.1em;
         text-transform: uppercase;
-        color: var(--sb-muted);
+        color: var(--sb-muted) !important;
         font-weight: 700;
         margin: 0 0 0.3rem 0;
     }
     .sb-card-heading {
         font-size: 1.08rem;
         font-weight: 700;
-        color: var(--sb-text);
+        color: var(--sb-text) !important;
         margin: 0 0 0.75rem 0;
         line-height: 1.3;
+        word-break: break-word;
     }
     .sb-pill {
         display: inline-block;
@@ -203,42 +321,51 @@ st.markdown(
         text-transform: uppercase;
         border: 1px solid var(--sb-border);
         background: var(--sb-input);
-        color: var(--sb-muted);
+        color: var(--sb-muted) !important;
         margin: 0 0.3rem 0.55rem 0;
     }
     .sb-pill.ok {
-        color: #04110F;
+        color: #04110F !important;
         background: var(--sb-accent);
         border-color: transparent;
     }
     .sb-pill.gold {
-        color: #1A1406;
+        color: #1A1406 !important;
         background: var(--sb-gold);
         border-color: transparent;
     }
     .sb-pill.warn {
-        color: #F5D07A;
+        color: #F5D07A !important;
         border-color: #3A3118;
         background: #151208;
     }
     .sb-status-row {
-        display: flex;
-        justify-content: space-between;
-        gap: 0.5rem;
-        padding: 0.48rem 0;
+        display: grid;
+        grid-template-columns: minmax(0, 42%) minmax(0, 58%);
+        gap: 0.35rem 0.65rem;
+        padding: 0.5rem 0;
         border-bottom: 1px solid var(--sb-border);
-        font-size: 0.85rem;
+        font-size: 0.82rem;
+        align-items: start;
     }
-    .sb-status-row span:first-child { color: var(--sb-muted); }
+    .sb-status-row span:first-child {
+        color: var(--sb-muted) !important;
+        font-weight: 600;
+    }
     .sb-status-row span:last-child {
-        color: var(--sb-text); font-weight: 600; text-align: right; word-break: break-all;
+        color: var(--sb-text) !important;
+        font-weight: 600;
+        text-align: right;
+        overflow-wrap: anywhere;
+        word-break: break-word;
+        min-width: 0;
     }
 
-    /* ── Hero tipo project overview ── */
+    /* ── Hero ── */
     .sb-hero-bar {
         position: relative;
         margin-bottom: 1.25rem;
-        padding: 1.65rem 1.75rem 1.55rem 1.75rem;
+        padding: 1.5rem 1.6rem 1.4rem 1.6rem;
         background:
             radial-gradient(ellipse 70% 120% at 0% 0%, rgba(43, 184, 168, 0.14), transparent 55%),
             radial-gradient(ellipse 50% 80% at 100% 100%, rgba(212, 168, 75, 0.08), transparent 50%),
@@ -259,19 +386,46 @@ st.markdown(
         pointer-events: none;
         mask-image: linear-gradient(180deg, #000 0%, transparent 85%);
     }
-    .sb-hero-crumbs {
+    .sb-hero-top-row {
         position: relative;
         display: flex;
         flex-wrap: wrap;
         align-items: center;
-        gap: 0.45rem 0.55rem;
-        margin-bottom: 0.75rem;
+        justify-content: space-between;
+        gap: 0.65rem 1rem;
+        margin-bottom: 0.85rem;
+    }
+    .sb-hero-crumbs {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 0.4rem 0.5rem;
         font-size: 0.78rem;
         color: var(--sb-muted) !important;
         font-weight: 600;
         letter-spacing: 0.02em;
+        min-width: 0;
+        flex: 1 1 auto;
     }
-    .sb-hero-crumbs .dot { opacity: 0.45; }
+    .sb-hero-crumbs .dot { opacity: 0.45; color: var(--sb-muted) !important; }
+    .sb-hero-crumbs .crumb {
+        color: var(--sb-muted) !important;
+        max-width: 14rem;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+    .sb-hero-date {
+        flex: 0 0 auto;
+        font-size: 0.78rem;
+        font-weight: 700;
+        color: var(--sb-gold) !important;
+        background: var(--sb-gold-dim);
+        border: 1px solid rgba(212, 168, 75, 0.35);
+        border-radius: 6px;
+        padding: 0.25rem 0.55rem;
+        white-space: nowrap;
+    }
     .sb-tag-prod {
         display: inline-flex;
         align-items: center;
@@ -284,6 +438,7 @@ st.markdown(
         background: var(--sb-gold-dim);
         color: var(--sb-gold) !important;
         border: 1px solid rgba(212, 168, 75, 0.35);
+        white-space: nowrap;
     }
     .sb-hero-top {
         position: relative;
@@ -294,22 +449,24 @@ st.markdown(
         gap: 1rem 1.5rem;
     }
     .sb-hero-bar h1 {
-        font-size: clamp(2rem, 4.2vw, 3rem) !important;
-        margin: 0 0 0.45rem 0 !important;
+        font-size: clamp(1.85rem, 3.8vw, 2.75rem) !important;
+        margin: 0 0 0.4rem 0 !important;
         font-weight: 800 !important;
         letter-spacing: -0.04em !important;
-        line-height: 1.05 !important;
+        line-height: 1.08 !important;
         background: linear-gradient(105deg, #FFFFFF 0%, #EAF0F6 40%, #2BB8A8 78%, #D4A84B 118%);
         -webkit-background-clip: text;
         background-clip: text;
         -webkit-text-fill-color: transparent;
         color: transparent !important;
+        max-width: 100%;
+        word-break: break-word;
     }
     .sb-hero-meta {
         position: relative;
-        color: var(--sb-muted);
-        font-size: 0.95rem;
-        max-width: 42rem;
+        color: var(--sb-muted) !important;
+        font-size: 0.92rem;
+        max-width: 40rem;
         line-height: 1.45;
     }
     .sb-hero-badge {
@@ -325,36 +482,44 @@ st.markdown(
         font-size: 0.84rem;
         font-weight: 700;
         white-space: nowrap;
+        max-width: 100%;
+        overflow: hidden;
+        text-overflow: ellipsis;
     }
     .sb-status-grid {
         position: relative;
         display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
-        gap: 0.55rem;
-        margin-top: 1.15rem;
+        grid-template-columns: repeat(auto-fit, minmax(118px, 1fr));
+        gap: 0.5rem;
+        margin-top: 1.1rem;
     }
     .sb-mini-card {
         background: var(--sb-input);
         border: 1px solid var(--sb-border);
         border-radius: 10px;
-        padding: 0.65rem 0.75rem;
-        min-height: 4.2rem;
+        padding: 0.6rem 0.7rem;
+        min-height: 4rem;
+        min-width: 0;
+        overflow: hidden;
     }
     .sb-mini-card .k {
-        font-size: 0.65rem;
+        font-size: 0.62rem;
         letter-spacing: 0.08em;
         text-transform: uppercase;
         color: var(--sb-muted) !important;
         font-weight: 700;
-        margin-bottom: 0.35rem;
+        margin-bottom: 0.3rem;
     }
     .sb-mini-card .v {
-        font-size: 0.92rem;
+        font-size: 0.88rem;
         font-weight: 700;
         color: var(--sb-text) !important;
         display: flex;
         align-items: center;
         gap: 0.35rem;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
     }
     .sb-mini-card .v.ok { color: var(--sb-accent) !important; }
     .sb-mini-card .v.gold { color: var(--sb-gold) !important; }
@@ -363,6 +528,7 @@ st.markdown(
         background: var(--sb-accent);
         box-shadow: 0 0 0 3px rgba(43, 184, 168, 0.2);
         display: inline-block;
+        flex-shrink: 0;
     }
 
     .sb-ops-banner {
@@ -373,9 +539,10 @@ st.markdown(
         background:
             radial-gradient(ellipse 60% 100% at 0% 50%, rgba(43, 184, 168, 0.1), transparent 60%),
             var(--sb-card);
+        overflow: hidden;
     }
     [data-testid="stMarkdownContainer"] h3 {
-        font-size: 1.18rem !important;
+        font-size: 1.12rem !important;
         font-weight: 700 !important;
         letter-spacing: -0.01em;
         margin: 0.35rem 0 0.85rem 0 !important;
@@ -384,12 +551,7 @@ st.markdown(
         border-radius: 0 10px 10px 0;
         background: linear-gradient(90deg, var(--sb-accent-dim), transparent 72%);
         color: var(--sb-text) !important;
-    }
-    [data-testid="stFileUploader"] {
-        background: var(--sb-input);
-        border: 1px dashed var(--sb-border-soft);
-        border-radius: 12px;
-        padding: 0.65rem;
+        word-break: break-word;
     }
     hr {
         border: none !important;
@@ -397,18 +559,16 @@ st.markdown(
         margin: 1.25rem 0 !important;
     }
 
-    /* Navegación lateral */
+    /* Navegación lateral — sin span globales */
     [data-testid="stSidebar"] > div:first-child {
         background-color: var(--sb-card) !important;
         padding-top: 1rem;
     }
-    [data-testid="stSidebar"] h1,
-    [data-testid="stSidebar"] h2,
-    [data-testid="stSidebar"] h3,
-    [data-testid="stSidebar"] p,
-    [data-testid="stSidebar"] label,
-    [data-testid="stSidebar"] span,
-    [data-testid="stSidebar"] .stMarkdown {
+    [data-testid="stSidebar"] [data-testid="stMarkdownContainer"] h1,
+    [data-testid="stSidebar"] [data-testid="stMarkdownContainer"] h2,
+    [data-testid="stSidebar"] [data-testid="stMarkdownContainer"] h3,
+    [data-testid="stSidebar"] [data-testid="stMarkdownContainer"] p,
+    [data-testid="stSidebar"] [data-testid="stWidgetLabel"] p {
         color: var(--sb-text) !important;
     }
     [data-testid="stSidebar"] [data-testid="stMarkdownContainer"] p {
@@ -454,6 +614,8 @@ st.markdown(
         padding: 0.55rem 0.7rem !important;
         margin-bottom: 0.45rem !important;
         transition: border-color 0.15s ease, background 0.15s ease;
+        overflow: hidden !important;
+        max-width: 100% !important;
     }
     [data-testid="stSidebar"] div[role="radiogroup"] label:hover {
         border-color: var(--sb-border-soft) !important;
@@ -471,10 +633,15 @@ st.markdown(
         border-color: var(--sb-accent) !important;
     }
 
-    /* Metrics y alertas nativas un poco más contenidas */
     [data-testid="stMetricValue"] {
         color: var(--sb-text) !important;
         font-weight: 700 !important;
+    }
+    /* Alertas no invaden columnas */
+    [data-testid="stAlert"] {
+        overflow: hidden !important;
+        max-width: 100% !important;
+        word-break: break-word !important;
     }
     </style>
     """,
@@ -628,25 +795,27 @@ if not st.session_state["autenticado"]:
 
 nombre_planta = cargar_nombre_planta()
 _plant_label = nombre_planta or "Planta Autorizada"
+_fecha_hoy = datetime.date.today().strftime("%d/%m/%Y")
 st.markdown(
     f"""
     <div class="sb-hero-bar">
-      <div class="sb-hero-crumbs">
-        <span>AgTech Export</span>
-        <span class="dot">/</span>
-        <span>{_plant_label}</span>
-        <span class="dot">/</span>
-        <span>main</span>
-        <span class="sb-tag-prod">PRODUCTION</span>
+      <div class="sb-hero-top-row">
+        <div class="sb-hero-crumbs">
+          <span class="crumb">AgTech Export</span>
+          <span class="dot">/</span>
+          <span class="crumb" title="{_plant_label}">{_plant_label}</span>
+          <span class="sb-tag-prod">PRODUCTION</span>
+        </div>
+        <div class="sb-hero-date">📅 {_fecha_hoy}</div>
       </div>
       <div class="sb-hero-top">
-        <div>
+        <div style="min-width:0;flex:1 1 16rem;">
           <h1>trazabilidad-planta</h1>
           <div class="sb-hero-meta">
             Control de calidad · GS1 · cadena de frío · LMR SENASA · sello Ed25519 · packing export
           </div>
         </div>
-        <div class="sb-hero-badge">◆ {_plant_label}</div>
+        <div class="sb-hero-badge" title="{_plant_label}">◆ {_plant_label}</div>
       </div>
       <div class="sb-status-grid">
         <div class="sb-mini-card">
@@ -818,34 +987,40 @@ with col_cen:
                 st.rerun()
 
         st.markdown("---")
-        with st.expander("Opciones de respaldo (sin cámara)"):
-            img_qr_upload = st.file_uploader(
-                "Subir foto del QR",
-                type=["png", "jpg", "jpeg", "webp"],
-                key="upload_foto_qr_pallet",
-            )
-            texto_qr_manual = st.text_area(
-                "O pegue el texto del QR (JSON / hash / lote|hash):",
-                height=100,
-                key="texto_manual_qr_pallet",
-                placeholder='{"lote":"L-001","hash_sha256":"abc...64 hex"}',
-            )
-            if st.button("🔍 Validar respaldo en Supabase", key="btn_validar_qr_respaldo"):
-                imagen_bytes = img_qr_upload.getvalue() if img_qr_upload is not None else None
-                try:
-                    if imagen_bytes:
-                        resultado_qr = funciones.procesar_escaneo_qr_camara(imagen_bytes)
-                    elif texto_qr_manual and texto_qr_manual.strip():
-                        resultado_qr = funciones.validar_pallet_por_qr(
-                            texto_qr=texto_qr_manual.strip()
-                        )
-                    else:
-                        st.warning("Suba una imagen o pegue el texto del QR.")
-                        resultado_qr = None
-                    if resultado_qr is not None:
-                        st.session_state["ultimo_resultado_qr"] = resultado_qr
-                except Exception as e:
-                    st.error(f"Error en escaneo QR: {e}")
+        # Respaldo fuera de expander anidado problemático (íconos/upload)
+        st.markdown(
+            '<p class="sb-card-title">Sin cámara</p>'
+            '<p class="sb-card-heading" style="font-size:0.95rem;margin-bottom:0.5rem;">'
+            "Validación manual / foto del QR</p>",
+            unsafe_allow_html=True,
+        )
+        img_qr_upload = st.file_uploader(
+            "Subir foto del QR",
+            type=["png", "jpg", "jpeg", "webp"],
+            key="upload_foto_qr_pallet",
+        )
+        texto_qr_manual = st.text_area(
+            "Texto del QR (JSON / hash / lote|hash)",
+            height=90,
+            key="texto_manual_qr_pallet",
+            placeholder='{"lote":"L-001","hash_sha256":"abc...64 hex"}',
+        )
+        if st.button("Validar respaldo en Supabase", key="btn_validar_qr_respaldo"):
+            imagen_bytes = img_qr_upload.getvalue() if img_qr_upload is not None else None
+            try:
+                if imagen_bytes:
+                    resultado_qr = funciones.procesar_escaneo_qr_camara(imagen_bytes)
+                elif texto_qr_manual and texto_qr_manual.strip():
+                    resultado_qr = funciones.validar_pallet_por_qr(
+                        texto_qr=texto_qr_manual.strip()
+                    )
+                else:
+                    st.warning("Suba una imagen o pegue el texto del QR.")
+                    resultado_qr = None
+                if resultado_qr is not None:
+                    st.session_state["ultimo_resultado_qr"] = resultado_qr
+            except Exception as e:
+                st.error(f"Error en escaneo QR: {e}")
 
         resultado_qr_ui = st.session_state.get("ultimo_resultado_qr")
         if resultado_qr_ui:
