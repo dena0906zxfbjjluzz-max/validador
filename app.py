@@ -1293,15 +1293,28 @@ with col_der:
                 unsafe_allow_html=True,
             )
 
+        _backend_ui = _backend_ecc
+        if _modo_ecc == "real" and str(_backend_ecc) in ("python", "n/d"):
+            _backend_ui = "rust" if motor_planta.rust_disponible() else _backend_ecc
+
         st.markdown(
             f"""
             <div class="sb-status-row"><span>Modo firma</span><span>{_modo_ecc}</span></div>
-            <div class="sb-status-row"><span>Backend</span><span>{_backend_ecc}</span></div>
+            <div class="sb-status-row"><span>Backend</span><span>{_backend_ui}</span></div>
             """,
             unsafe_allow_html=True,
         )
         if _pub_oficial:
             st.caption(f"Llave pública oficial: `{_pub_oficial[:16]}…`")
+            st.caption(
+                "La llave de secrets ya está activa. El sello del PDF se firmará "
+                "con ella al generar el reporte (no depende del Excel)."
+            )
+        elif _modo_ecc != "real":
+            st.caption(
+                "Sin LLAVE_PRIVADA usable: las firmas serán efímeras (demo). "
+                "Eso es independiente de subir el Excel."
+            )
         st.caption(f"Diagnóstico: {_diag_ecc}")
 
         qr_ui = st.session_state.get("ultimo_resultado_qr")

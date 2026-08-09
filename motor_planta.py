@@ -32,6 +32,19 @@ def motor_activo() -> str:
 
 
 def modo_firma_activo() -> str:
+    """
+    "real" si ya se firmó con LLAVE_PRIVADA en este proceso, o si la llave
+    oficial está disponible en secrets (lista para firmar en modo real).
+    "demo" solo cuando no hay seed Ed25519 usable en secrets.
+    """
+    if MODO_FIRMA == "real":
+        return "real"
+    # Sin haber firmado aún: si la llave oficial existe, no es demo.
+    try:
+        if leer_llave_privada_secrets():
+            return "real"
+    except Exception:
+        pass
     return MODO_FIRMA
 
 
