@@ -21,7 +21,10 @@ La plataforma cuenta con una arquitectura híbrida de alto rendimiento que combi
 * **Preservación de Vida Útil:** Monitoreo, registro automático y alertas visuales de las temperaturas en túneles de pre-frío y cámaras frigoríficas, garantizando rangos óptimos de conservación (5.0°C) para el transporte marítimo de larga distancia.
 
 ### 🚢 Módulo 5: Gestión de Contenedores, Bookings y Precintos de Aduanas
-* **Resguardo Logístico Antifraude:** Centralización y control estricto de números de Booking, identificadores de contenedores Reefer y sellado digital de los precintos oficiales de la Línea Naviera y SENASA, blindando el despacho en puerto.
+* **Igual de simple que el Módulo 6:** escanear QR del reefer (cámara on/off), o buscar booking / ISO 6346.
+* **Formulario guiado en 1 clic:** al leer el QR se rellenan booking, contenedor y precintos; botón **Sellar y registrar**.
+* **Doble registro:** SQLite local + POST opcional a Supabase `contenedores_despacho`.
+* **Sin Excel obligatorio:** el panel vive en el dashboard de planta, siempre visible.
 
 ### 📷 Módulo 6: Escaneo QR del Pallet (Supabase)
 * **Cámara del inspector:** `st.camera_input` activa webcam o cámara del celular.

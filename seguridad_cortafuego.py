@@ -353,9 +353,21 @@ def sesion_valida(session_state: Any) -> tuple[bool, str]:
         return False, "no_auth"
 
     token = session_state.get("fw_session_token") or ""
+    # Migración suave: sesión anterior al cortafuego (autenticado sin token)
     if not token or len(str(token)) < 16:
-        cerrar_sesion(session_state, "token_invalido")
-        return False, "token_invalido"
+        token = secrets.token_hex(24)
+        session_state["fw_session_token"] = token
+        session_state["fw_ultimo_pulso"] = _ahora()
+        if not session_state.get("fw_usuario"):
+            session_state["fw_usuario"] = "inspector"
+        registrar_evento(
+            "SESSION_MIGRATE",
+            "Token de sesión emitido (sesión previa al cortafuego)",
+            severidad="info",
+            usuario=session_state.get("fw_usuario") or "",
+            session_id=token[:16],
+        )
+        return True, "migrated"
 
     pol = politica()
     ultimo = float(session_state.get("fw_ultimo_pulso") or 0)

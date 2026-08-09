@@ -650,6 +650,56 @@ st.markdown(
         max-width: 100% !important;
         word-break: break-word !important;
     }
+
+    /* Bitácora cortafuego: filas contenidas (sin code-badge de Streamlit) */
+    .fw-event-row {
+        border: 1px solid var(--sb-border);
+        border-radius: 8px;
+        background: var(--sb-input);
+        padding: 0.55rem 0.7rem;
+        margin: 0.45rem 0;
+        max-width: 100%;
+        overflow: hidden;
+        box-sizing: border-box;
+    }
+    .fw-event-time {
+        font-size: 0.72rem;
+        font-weight: 700;
+        color: var(--sb-accent) !important;
+        letter-spacing: 0.02em;
+        margin-bottom: 0.25rem;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+    .fw-event-main {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 0.4rem 0.55rem;
+        margin-bottom: 0.15rem;
+    }
+    .fw-event-name {
+        font-size: 0.82rem;
+        font-weight: 800;
+        color: var(--sb-text) !important;
+        letter-spacing: 0.04em;
+    }
+    .fw-event-sev {
+        font-size: 0.68rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        color: var(--sb-muted) !important;
+        border: 1px solid var(--sb-border);
+        border-radius: 4px;
+        padding: 0.08rem 0.35rem;
+    }
+    .fw-event-det {
+        font-size: 0.78rem;
+        color: var(--sb-muted) !important;
+        word-break: break-word;
+        line-height: 1.35;
+    }
     </style>
     """,
     unsafe_allow_html=True,
@@ -911,6 +961,18 @@ if "camara_qr_activa" not in st.session_state:
     st.session_state["camara_qr_activa"] = False
 if "camera_qr_token" not in st.session_state:
     st.session_state["camera_qr_token"] = 0
+if "camara_cnt_activa" not in st.session_state:
+    st.session_state["camara_cnt_activa"] = False
+if "camera_cnt_token" not in st.session_state:
+    st.session_state["camera_cnt_token"] = 0
+for _ck in (
+    "cnt_form_booking",
+    "cnt_form_contenedor",
+    "cnt_form_plinea",
+    "cnt_form_psenasa",
+):
+    if _ck not in st.session_state:
+        st.session_state[_ck] = ""
 
 
 def _apagar_camara_qr():
@@ -923,6 +985,45 @@ def _apagar_camara_qr():
                 del st.session_state[k]
             except Exception:
                 pass
+
+
+def _apagar_camara_cnt():
+    """Apaga cámara del módulo de contenedores."""
+    st.session_state["camara_cnt_activa"] = False
+    st.session_state["camera_cnt_token"] = int(st.session_state.get("camera_cnt_token") or 0) + 1
+    for k in list(st.session_state.keys()):
+        if str(k).startswith("camera_escaneo_cnt_"):
+            try:
+                del st.session_state[k]
+            except Exception:
+                pass
+
+
+def _cnt_aplicar_prefill(pl=None, reg=None):
+    """Rellena los campos del formulario M5 (widgets key=) desde QR o registro."""
+    pl = pl or {}
+    reg = reg or {}
+
+    def _pick(*keys):
+        for src in (reg, pl):
+            for k in keys:
+                v = src.get(k) if isinstance(src, dict) else None
+                if v is not None and str(v).strip():
+                    return str(v).strip()
+        return ""
+
+    booking = _pick("booking", "Booking")
+    contenedor = _pick("contenedor", "Contenedor", "container")
+    plinea = _pick("precinto_linea", "Precinto Línea", "precinto linea")
+    psenasa = _pick("precinto_senasa", "Precinto SENASA", "precinto senasa")
+    if booking:
+        st.session_state["cnt_form_booking"] = booking
+    if contenedor:
+        st.session_state["cnt_form_contenedor"] = contenedor
+    if plinea:
+        st.session_state["cnt_form_plinea"] = plinea
+    if psenasa:
+        st.session_state["cnt_form_psenasa"] = psenasa
 
 
 # ─── Shell dashboard 3 columnas [1, 2, 1] ─────────────────────────────────────
@@ -1237,10 +1338,186 @@ with col_der:
         if _ev:
             with st.expander("Últimos eventos de seguridad"):
                 for e in _ev:
-                    st.caption(
-                        f"`{e.get('fecha')}` · **{e.get('evento')}** · "
-                        f"{e.get('severidad')} · {e.get('detalle') or ''}"
+                    import html as _html
+
+                    fecha = _html.escape(str(e.get("fecha") or "—"))
+                    evento = _html.escape(str(e.get("evento") or "—"))
+                    sev = _html.escape(str(e.get("severidad") or "info"))
+                    det = _html.escape(str(e.get("detalle") or "").strip())
+                    # HTML propio: no usar st.caption(`code`) — el badge de code se sale del card
+                    st.markdown(
+                        f"""
+                        <div class="fw-event-row">
+                          <div class="fw-event-time">{fecha}</div>
+                          <div class="fw-event-main">
+                            <span class="fw-event-name">{evento}</span>
+                            <span class="fw-event-sev">{sev}</span>
+                          </div>
+                          <div class="fw-event-det">{det}</div>
+                        </div>
+                        """,
+                        unsafe_allow_html=True,
                     )
+
+# ─── Módulo 5: Contenedores (siempre visible, UX igual a Módulo 6) ────────────
+st.markdown("---")
+with st.container(border=True):
+    st.markdown(
+        '<p class="sb-card-title">Aduanas · Reefer · Precintos</p>'
+        '<p class="sb-card-heading">Módulo 5 — Contenedores, bookings y precintos</p>',
+        unsafe_allow_html=True,
+    )
+    st.caption(
+        "Escanee el QR del contenedor (o escriba booking / ISO 6346). "
+        "Si no está en la base, use el formulario guiado y selle en un clic. "
+        "Cámara apagada por defecto (misma lógica que el Módulo 6)."
+    )
+
+    col_c_scan, col_c_form = st.columns([1, 1])
+
+    with col_c_scan:
+        st.markdown(
+            '<p class="sb-card-title">Escaneo rápido</p>',
+            unsafe_allow_html=True,
+        )
+        if not st.session_state["camara_cnt_activa"]:
+            st.info("Lente apagado. Active el escáner solo para leer el QR del reefer.")
+            if st.button(
+                "Activar escáner de contenedor",
+                type="primary",
+                key="btn_activar_escaner_cnt",
+            ):
+                st.session_state["camara_cnt_activa"] = True
+                st.rerun()
+        else:
+            st.caption("Escáner activo — apunte al QR del contenedor / booking.")
+            foto_cnt = st.camera_input(
+                "Cámara — QR de contenedor o booking",
+                key=f"camera_escaneo_cnt_{st.session_state['camera_cnt_token']}",
+            )
+            if st.button("Apagar cámara", key="btn_apagar_camara_cnt"):
+                _apagar_camara_cnt()
+                st.rerun()
+
+            if foto_cnt is not None:
+                try:
+                    with st.spinner("Leyendo QR y consultando contenedor…"):
+                        res_cnt = funciones.procesar_escaneo_contenedor_camara(
+                            foto_cnt.getvalue()
+                        )
+                    st.session_state["ultimo_resultado_cnt"] = res_cnt
+                    _cnt_aplicar_prefill(
+                        res_cnt.get("payload"),
+                        res_cnt.get("registro") or res_cnt.get("local"),
+                    )
+                except Exception as e:
+                    st.session_state["ultimo_resultado_cnt"] = {
+                        "verificado": False,
+                        "tipo_ui": "error",
+                        "mensaje_ui": f"Error de escaneo: {e}",
+                    }
+                _apagar_camara_cnt()
+                st.rerun()
+
+        st.markdown("---")
+        st.caption("O sin cámara")
+        texto_cnt = st.text_input(
+            "Booking o contenedor (ISO / texto QR):",
+            placeholder="TGBU1234567  ·  BKG-998  ·  JSON",
+            key="cnt_lookup_manual",
+        )
+        if st.button("Buscar contenedor", key="btn_cnt_lookup"):
+            if not (texto_cnt or "").strip():
+                st.warning("Escriba un booking o contenedor.")
+            else:
+                ok_in, txt_ok = firewall.validar_entrada_operativa(texto_cnt.strip())
+                if not ok_in:
+                    st.error(f"Cortafuego: {txt_ok}")
+                else:
+                    res_cnt = funciones.validar_y_consultar_contenedor(texto_qr=txt_ok)
+                    st.session_state["ultimo_resultado_cnt"] = res_cnt
+                    _cnt_aplicar_prefill(
+                        res_cnt.get("payload"),
+                        res_cnt.get("registro") or res_cnt.get("local"),
+                    )
+                    st.rerun()
+
+        res_ui = st.session_state.get("ultimo_resultado_cnt")
+        if res_ui:
+            if res_ui.get("tipo_ui") == "success":
+                st.success(res_ui.get("mensaje_ui") or "Contenedor OK")
+            else:
+                st.error(res_ui.get("mensaje_ui") or "No encontrado")
+            pl = res_ui.get("payload") or {}
+            if pl:
+                st.caption(
+                    f"Leído · booking `{pl.get('booking') or 'N/D'}` · "
+                    f"contenedor `{(pl.get('contenedor') or 'N/D')}`"
+                )
+
+    with col_c_form:
+        st.markdown(
+            '<p class="sb-card-title">Registro guiado (1 clic)</p>',
+            unsafe_allow_html=True,
+        )
+        booking_input = st.text_input(
+            "Booking *",
+            placeholder="BKG-998231",
+            key="cnt_form_booking",
+        )
+        contenedor_input = st.text_input(
+            "Contenedor reefer * (ISO 6346)",
+            placeholder="TGBU1234567",
+            key="cnt_form_contenedor",
+        )
+        precinto_linea_input = st.text_input(
+            "Precinto línea naviera *",
+            placeholder="MSC-L99821",
+            key="cnt_form_plinea",
+        )
+        precinto_senasa_input = st.text_input(
+            "Precinto SENASA",
+            placeholder="SENASA-004821",
+            key="cnt_form_psenasa",
+        )
+        st.caption(f"Destino (parámetros de planta): **{mercado_destino}**")
+
+        if st.button(
+            "Sellar y registrar contenedor",
+            type="primary",
+            key="btn_cnt_sellar",
+        ):
+            try:
+                resultado_cnt = funciones.registrar_contenedor_despacho(
+                    booking=booking_input,
+                    contenedor=contenedor_input,
+                    precinto_linea=precinto_linea_input,
+                    precinto_senasa=precinto_senasa_input,
+                    destino=mercado_destino,
+                    estado="SELLADO Y LISTO",
+                    inspector=auditor_nombre,
+                )
+                if resultado_cnt.get("tipo_ui") == "success":
+                    st.success(resultado_cnt.get("mensaje_ui"))
+                else:
+                    st.error(resultado_cnt.get("mensaje_ui"))
+                sb_c = resultado_cnt.get("supabase") or {}
+                if sb_c.get("ok"):
+                    if sb_c.get("ya_existia") or sb_c.get("status") == 409:
+                        st.info("☁️ Supabase: contenedor ya estaba en la nube.")
+                    else:
+                        st.caption(f"☁️ Supabase: {sb_c.get('mensaje')}")
+                elif sb_c.get("configurado") is False:
+                    st.caption("☁️ Supabase no configurado (solo SQLite local).")
+                elif sb_c:
+                    st.warning(sb_c.get("mensaje") or "Error remoto contenedores_despacho")
+            except Exception as e:
+                st.error(e)
+
+    lista_cont_db = funciones.cargar_contenedores_db(50)
+    if lista_cont_db:
+        with st.expander(f"Contenedores registrados ({len(lista_cont_db)})"):
+            st.dataframe(pd.DataFrame(lista_cont_db), width="stretch", hide_index=True)
 
 # ─── Carga de archivo y módulos 1–5 (lógica intacta) ─────────────────────────
 with st.container(border=True):
@@ -1594,29 +1871,17 @@ if archivo is not None:
             with st.expander("Historial de control de frío (SQLite)"):
                 st.dataframe(pd.DataFrame(historial_frio), width="stretch", hide_index=True)
 
-        # MÓDULO 5
+        # MÓDULO 5 (versión embebida en flujo Excel — apunta al panel superior)
         st.markdown("---")
-        st.markdown("### 🚢 Módulo 5: Gestión de Contenedores, Bookings y Precintos de Aduanas")
-        col_cnt1, col_cnt2, col_cnt3 = st.columns(3)
-        with col_cnt1:
-            booking_input = st.text_input("Número de Booking:", placeholder="Ej: BKG-998231")
-            contenedor_input = st.text_input("ID de Contenedor Reefer:", placeholder="Ej: TGBU1234567")
-        with col_cnt2:
-            precinto_linea_input = st.text_input("Precinto de Línea Naviera:", placeholder="Ej: MSC-L99821")
-            precinto_senasa_input = st.text_input("Precinto Oficial SENASA:", placeholder="Ej: SENASA-004821")
-        with col_cnt3:
-            st.write("###")
-            if st.button("🔒 Registrar y Sellar Contenedor"):
-                if booking_input and contenedor_input and precinto_linea_input:
-                    funciones.guardar_contenedor_db(booking_input, contenedor_input, precinto_linea_input, precinto_senasa_input, mercado_destino, "SELLADO Y LISTO")
-                    st.success(f"¡Contenedor `{contenedor_input}` sellado y registrado en BD con éxito!")
-                else:
-                    st.error("⚠️ Complete los campos obligatorios de Booking, Contenedor y Precinto.")
-
-        lista_cont_db = funciones.cargar_contenedores_db()
+        st.markdown("### 🚢 Módulo 5: Contenedores y precintos")
+        st.info(
+            "Use el **panel Módulo 5** (arriba, siempre visible): escanear QR de contenedor, "
+            "buscar booking/ISO y **sellar en un clic** — igual de simple que el escaner del Módulo 6."
+        )
+        lista_cont_db = funciones.cargar_contenedores_db(30)
         if lista_cont_db:
-            with st.expander("📦 Ver Contenedores Registrados para Despacho"):
-                st.dataframe(pd.DataFrame(lista_cont_db), use_container_width=True)
+            with st.expander(f"Contenedores en SQLite ({len(lista_cont_db)})"):
+                st.dataframe(pd.DataFrame(lista_cont_db), width="stretch", hide_index=True)
 
         st.markdown("---")
         st.markdown("### 1️⃣ Selección de Columnas para Exportar")
