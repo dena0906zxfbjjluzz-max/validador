@@ -29,6 +29,13 @@ La plataforma cuenta con una arquitectura híbrida de alto rendimiento que combi
 * **Validación en la nube:** consulta automática a `public.historial_reportes` (lote / `hash_sha256`).
 * **Resultado:** ✅ pallet verificado si el hash está registrado; 🚨 alerta si no coincide.
 
+### 🛡️ Cortafuego de seguridad (aplicación)
+* **Login endurecido:** comparación de secretos en tiempo constante, bloqueo tras intentos fallidos.
+* **Sesión protegida:** token aleatorio + timeout por inactividad + cierre de sesión seguro.
+* **Validación de entrada:** archivos (extensión / tamaño) y textos operativos (QR / SSCC / lote).
+* **Bitácora:** eventos `LOGIN_OK`, `LOGIN_FAIL`, `LOGIN_LOCKOUT`, `UPLOAD_*` en SQLite `bitacora_seguridad`.
+* **Streamlit:** XSRF ON, CORS restringido, límite de upload en `.streamlit/config.toml`.
+
 ## 🛡️ Diferenciadores Tecnológicos Avanzados
 
 ### ⚡ Motor Criptográfico Ed25519 (Real + Demo)

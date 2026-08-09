@@ -8,3 +8,8 @@ font = "sans serif"
 
 [server]
 headless = true
+# Cortafuego Streamlit (capa servidor)
+enableXsrfProtection = true
+enableCORS = false
+maxUploadSize = 25
+maxMessageSize = 50

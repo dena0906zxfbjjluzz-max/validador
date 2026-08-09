@@ -5,12 +5,19 @@ import pandas as pd
 
 import funciones
 import motor_planta
+import seguridad_cortafuego as firewall
 
 st.set_page_config(
     page_title="Sistema Integral de Exportación",
     page_icon="📊",
     layout="wide",
 )
+
+# Cortafuego: bootstrap DB de seguridad al cargar la app
+try:
+    firewall.inicializar_cortafuego_db()
+except Exception:
+    pass
 
 
 def cargar_nombre_planta() -> str:
@@ -672,6 +679,16 @@ st.sidebar.markdown(
     unsafe_allow_html=True,
 )
 
+# Cortafuego: cerrar sesión (solo si autenticado)
+if st.session_state.get("autenticado"):
+    st.sidebar.markdown("---")
+    st.sidebar.caption("🛡️ Cortafuego de planta")
+    _fw_user = st.session_state.get("fw_usuario") or "inspector"
+    st.sidebar.caption(f"Sesión: `{_fw_user}`")
+    if st.sidebar.button("Cerrar sesión segura", key="btn_fw_logout"):
+        firewall.cerrar_sesion(st.session_state, "logout_manual")
+        st.rerun()
+
 # ---------- MÓDULO PÚBLICO: verificación de PDF firmado (sin login) ----------
 if modo_app == "Verificación pública ECC":
     st.title("Verificación pública de sello ECC")
@@ -781,16 +798,49 @@ if not st.session_state["autenticado"]:
         st.error(error_creds)
         st.stop()
 
-    usuarioInput = st.text_input("Usuario:")
-    passwordInput = st.text_input("Contraseña:", type="password")
+    # Estado del cortafuego (bloqueo por fuerza bruta)
+    _bloq, _segs_bloq = firewall.estado_bloqueo(st.session_state)
+    if _bloq:
+        st.error(
+            f"🔒 Cortafuego activo: demasiados intentos fallidos. "
+            f"Espere {_segs_bloq // 60}m {_segs_bloq % 60}s."
+        )
+        st.caption("Los intentos se registran en la bitácora de seguridad local.")
+        st.stop()
 
-    if st.button("Ingresar"):
-        if usuarioInput == usuario_correcto and passwordInput == password_correcto:
-            st.session_state["autenticado"] = True
-            st.success("Acceso concedido.")
+    usuarioInput = st.text_input("Usuario:", key="login_usuario")
+    passwordInput = st.text_input("Contraseña:", type="password", key="login_clave")
+
+    if st.button("Ingresar", type="primary", key="btn_login_planta"):
+        resultado_login = firewall.intentar_login(
+            st.session_state,
+            usuario_in=usuarioInput,
+            clave_in=passwordInput,
+            usuario_ok=usuario_correcto or "",
+            clave_ok=password_correcto or "",
+        )
+        if resultado_login.get("ok"):
+            st.success(resultado_login.get("mensaje") or "Acceso concedido.")
             st.rerun()
         else:
-            st.error("Usuario o contraseña incorrectos. Inténtelo de nuevo.")
+            st.error(resultado_login.get("mensaje") or "Credenciales incorrectas.")
+            if resultado_login.get("bloqueado"):
+                st.rerun()
+    st.caption(
+        "🛡️ Cortafuego: comparación segura de secretos · bloqueo tras intentos fallidos · "
+        f"límite {firewall.politica()['max_intentos']} intentos."
+    )
+    st.stop()
+
+# Sesión autenticada: validar token + timeout en cada rerun
+_sesion_ok, _motivo_sesion = firewall.sesion_valida(st.session_state)
+if not _sesion_ok:
+    st.warning(
+        "Sesión cerrada por el cortafuego"
+        + (f" ({_motivo_sesion})." if _motivo_sesion not in ("no_auth",) else ".")
+        + " Vuelva a iniciar sesión."
+    )
+    st.session_state["autenticado"] = False
     st.stop()
 
 nombre_planta = cargar_nombre_planta()
@@ -1008,12 +1058,24 @@ with col_cen:
         if st.button("Validar respaldo en Supabase", key="btn_validar_qr_respaldo"):
             imagen_bytes = img_qr_upload.getvalue() if img_qr_upload is not None else None
             try:
-                if imagen_bytes:
-                    resultado_qr = funciones.procesar_escaneo_qr_camara(imagen_bytes)
-                elif texto_qr_manual and texto_qr_manual.strip():
-                    resultado_qr = funciones.validar_pallet_por_qr(
-                        texto_qr=texto_qr_manual.strip()
+                if imagen_bytes is not None and img_qr_upload is not None:
+                    _ok_img, _msg_img = firewall.validar_upload_bytes(
+                        img_qr_upload.name, imagen_bytes
                     )
+                    if not _ok_img:
+                        st.error(f"🛡️ Cortafuego: {_msg_img}")
+                        resultado_qr = None
+                    else:
+                        resultado_qr = funciones.procesar_escaneo_qr_camara(imagen_bytes)
+                elif texto_qr_manual and texto_qr_manual.strip():
+                    _ok_txt, _txt_o_err = firewall.validar_entrada_operativa(
+                        texto_qr_manual.strip()
+                    )
+                    if not _ok_txt:
+                        st.error(f"🛡️ Cortafuego: {_txt_o_err}")
+                        resultado_qr = None
+                    else:
+                        resultado_qr = funciones.validar_pallet_por_qr(texto_qr=_txt_o_err)
                 else:
                     st.warning("Suba una imagen o pegue el texto del QR.")
                     resultado_qr = None
@@ -1150,6 +1212,36 @@ with col_der:
 
         st.caption("PDF firmado: use **Verificación pública ECC** en la barra de navegación.")
 
+    with st.container(border=True):
+        st.markdown(
+            '<p class="sb-card-title">Seguridad</p>'
+            '<p class="sb-card-heading">Cortafuego de planta</p>',
+            unsafe_allow_html=True,
+        )
+        _fw = firewall.resumen_panel(st.session_state)
+        st.markdown(
+            '<span class="sb-pill ok">Firewall ON</span>',
+            unsafe_allow_html=True,
+        )
+        st.markdown(
+            f"""
+            <div class="sb-status-row"><span>Usuario sesión</span><span>{_fw.get('usuario')}</span></div>
+            <div class="sb-status-row"><span>Token</span><span>{_fw.get('token_corto')}</span></div>
+            <div class="sb-status-row"><span>Timeout</span><span>{_fw.get('timeout_min')} min</span></div>
+            <div class="sb-status-row"><span>Max login fails</span><span>{_fw.get('max_intentos')}</span></div>
+            <div class="sb-status-row"><span>Upload máx.</span><span>{_fw.get('max_upload_mb')} MB</span></div>
+            """,
+            unsafe_allow_html=True,
+        )
+        _ev = firewall.ultimos_eventos(5)
+        if _ev:
+            with st.expander("Últimos eventos de seguridad"):
+                for e in _ev:
+                    st.caption(
+                        f"`{e.get('fecha')}` · **{e.get('evento')}** · "
+                        f"{e.get('severidad')} · {e.get('detalle') or ''}"
+                    )
+
 # ─── Carga de archivo y módulos 1–5 (lógica intacta) ─────────────────────────
 with st.container(border=True):
     st.markdown(
@@ -1165,15 +1257,36 @@ with st.container(border=True):
         label_visibility="collapsed",
         key="uploader_recepcion_empaque",
     )
-    st.caption("Formatos: .xlsx · .csv · modo flexible si faltan columnas LOTE / PESO / CALIBRE.")
+    st.caption(
+        f"Formatos: .xlsx · .csv · cortafuego máx. "
+        f"{firewall.politica()['max_upload_bytes'] // (1024 * 1024)} MB."
+    )
 
 if archivo is not None:
     try:
+        _bytes_arch = archivo.getvalue()
+        _ok_up, _msg_up = firewall.validar_upload_bytes(archivo.name, _bytes_arch)
+        if not _ok_up:
+            st.error(f"🛡️ Cortafuego bloqueó el archivo: {_msg_up}")
+            firewall.registrar_evento(
+                "UPLOAD_BLOCK",
+                f"{archivo.name}: {_msg_up}",
+                severidad="warn",
+                usuario=st.session_state.get("fw_usuario") or "",
+            )
+            st.stop()
+
         archivo_key = f"{archivo.name}_{archivo.size}"
         if st.session_state.get("archivo_activo") != archivo_key:
             st.session_state["archivo_activo"] = archivo_key
             st.session_state["df_trabajo"] = funciones.cargar_datos_archivo(archivo)
             st.session_state["lote_congelado"] = False
+            firewall.registrar_evento(
+                "UPLOAD_OK",
+                f"Archivo {archivo.name} ({archivo.size} bytes)",
+                severidad="info",
+                usuario=st.session_state.get("fw_usuario") or "",
+            )
 
         df_original = st.session_state["df_trabajo"]
         cols_traza = funciones.mapear_columnas_trazabilidad(df_original)
