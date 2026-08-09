@@ -204,21 +204,74 @@ st.markdown(
     .sb-hero-bar {
         display: flex;
         flex-wrap: wrap;
-        align-items: baseline;
+        align-items: center;
         justify-content: space-between;
-        gap: 0.5rem 1rem;
-        margin-bottom: 1rem;
-        padding: 0.85rem 1rem;
-        background: var(--sb-card);
+        gap: 0.75rem 1.25rem;
+        margin-bottom: 1.15rem;
+        padding: 1.4rem 1.55rem 1.5rem 1.55rem;
+        background:
+            radial-gradient(ellipse 80% 120% at 0% 0%, rgba(62, 207, 142, 0.16), transparent 55%),
+            radial-gradient(ellipse 55% 90% at 100% 80%, rgba(62, 207, 142, 0.07), transparent 50%),
+            var(--sb-card);
         border: 1px solid var(--sb-border);
-        border-radius: 12px;
+        border-radius: 16px;
+        box-shadow: 0 10px 36px rgba(0, 0, 0, 0.38);
     }
     .sb-hero-bar h1 {
-        font-size: 1.25rem !important;
-        margin: 0 !important;
-        font-weight: 700 !important;
+        font-size: clamp(1.85rem, 3.6vw, 2.65rem) !important;
+        margin: 0 0 0.4rem 0 !important;
+        font-weight: 800 !important;
+        letter-spacing: -0.03em !important;
+        line-height: 1.12 !important;
+        background: linear-gradient(100deg, #FFFFFF 0%, #EDEDEF 32%, #3ECF8E 100%);
+        -webkit-background-clip: text;
+        background-clip: text;
+        -webkit-text-fill-color: transparent;
+        color: transparent !important;
     }
-    .sb-hero-meta { color: var(--sb-muted); font-size: 0.85rem; }
+    .sb-hero-meta { color: var(--sb-muted); font-size: 0.95rem; }
+    .sb-hero-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.4rem;
+        padding: 0.5rem 0.95rem;
+        border-radius: 999px;
+        border: 1px solid rgba(62, 207, 142, 0.4);
+        background: rgba(62, 207, 142, 0.12);
+        color: var(--sb-green) !important;
+        font-size: 0.84rem;
+        font-weight: 700;
+    }
+    .sb-ops-banner {
+        margin: 0.85rem 0 1rem 0;
+        padding: 1.05rem 1.2rem;
+        border-radius: 12px;
+        border: 1px solid var(--sb-border);
+        background: linear-gradient(135deg, #12121A 0%, #0E1412 100%);
+    }
+    /* Títulos de módulos operativos (tras subir Excel) */
+    [data-testid="stMarkdownContainer"] h3 {
+        font-size: 1.2rem !important;
+        font-weight: 700 !important;
+        letter-spacing: -0.01em;
+        margin: 0.35rem 0 0.85rem 0 !important;
+        padding: 0.55rem 0.75rem 0.55rem 0.9rem !important;
+        border-left: 3px solid var(--sb-green) !important;
+        border-radius: 0 10px 10px 0;
+        background: linear-gradient(90deg, rgba(62, 207, 142, 0.1), transparent 70%);
+        color: var(--sb-text) !important;
+    }
+    [data-testid="stFileUploader"] {
+        background: #0E0E14;
+        border: 1px dashed var(--sb-border);
+        border-radius: 12px;
+        padding: 0.65rem;
+    }
+    hr {
+        border: none !important;
+        border-top: 1px solid var(--sb-border) !important;
+        margin: 1.25rem 0 !important;
+    }
 
     /* ── Navegación lateral (sidebar) ── */
     [data-testid="stSidebar"] {
@@ -463,7 +516,7 @@ st.markdown(
         <h1>Plataforma de control de calidad y planta</h1>
         <div class="sb-hero-meta">GS1 · balanzas · LMR · trazabilidad · frío · precintos · sello ECC</div>
       </div>
-      <div class="sb-hero-meta">Planta: <strong style="color:#EDEDEF">{nombre_planta or "Planta Autorizada"}</strong></div>
+      <div class="sb-hero-badge">◆ {nombre_planta or "Planta Autorizada"}</div>
     </div>
     """,
     unsafe_allow_html=True,
@@ -766,9 +819,21 @@ with col_der:
         st.caption("PDF firmado: use **Verificación pública ECC** en la barra de navegación.")
 
 # ─── Carga de archivo y módulos 1–5 (lógica intacta) ─────────────────────────
-archivo = st.file_uploader(
-    "Cargar Base de Datos de Recepción / Empaque (Excel o CSV)", type=["xlsx", "csv"]
-)
+with st.container(border=True):
+    st.markdown(
+        """
+        <p class="sb-card-title">Recepción / empaque</p>
+        <p class="sb-card-heading">Cargar base de datos (Excel o CSV)</p>
+        """,
+        unsafe_allow_html=True,
+    )
+    archivo = st.file_uploader(
+        "Archivo de recepción o packing list",
+        type=["xlsx", "csv"],
+        label_visibility="collapsed",
+        key="uploader_recepcion_empaque",
+    )
+    st.caption("Formatos: .xlsx · .csv · modo flexible si faltan columnas LOTE / PESO / CALIBRE.")
 
 if archivo is not None:
     try:
@@ -836,6 +901,24 @@ if archivo is not None:
                 use_container_width=True,
                 hide_index=True,
             )
+
+        st.markdown(
+            f"""
+            <div class="sb-ops-banner">
+              <p class="sb-card-title" style="margin:0;">Archivo activo</p>
+              <p style="margin:0.35rem 0 0.55rem 0;font-size:1.2rem;font-weight:800;color:#EDEDEF;">
+                {archivo.name}
+              </p>
+              <span class="sb-hero-meta">
+                <strong style="color:#3ECF8E !important;">{total_filas}</strong> registros ·
+                <strong style="color:#3ECF8E !important;">{total_columnas}</strong> columnas ·
+                confiabilidad <strong style="color:#3ECF8E !important;">{porcentaje_limpio}%</strong>
+                · {estado_rust}
+              </span>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
 
         # MÓDULO 1
         st.markdown("---")
@@ -1315,12 +1398,18 @@ if archivo is not None:
                     st.session_state["ultimo_supabase"] = sb
 
                 if sb.get("ok"):
-                    st.success(
-                        f"☁️ Supabase OK · public.historial_reportes · {sb.get('mensaje', '')}"
-                    )
-                    with st.expander("Payload enviado a Supabase"):
+                    if sb.get("ya_existia") or sb.get("status") == 409:
+                        st.info(
+                            "☁️ Supabase · sello **ya registrado** (hash único). "
+                            "No es un error — no se duplicó el registro."
+                        )
+                    else:
+                        st.success(
+                            f"☁️ Supabase OK · public.historial_reportes · {sb.get('mensaje', '')}"
+                        )
+                    with st.expander("Detalle payload Supabase"):
                         st.json(sb.get("payload") or {})
-                        st.caption(f"Endpoint: `{sb.get('endpoint')}`")
+                        st.caption(f"Endpoint: `{sb.get('endpoint')}` · HTTP {sb.get('status')}")
                 else:
                     msg = sb.get("mensaje") or "Error desconocido al insertar en Supabase"
                     st.error(msg)

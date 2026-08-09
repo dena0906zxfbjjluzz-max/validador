@@ -500,7 +500,19 @@ def enviar_sello_a_supabase(
         elif e.code == 404:
             hint = " | Pista: la tabla public.historial_reportes no existe o el schema no es public."
         elif e.code == 409:
-            hint = " | Pista: hash_sha256 duplicado (ya estaba insertado)."
+            # Hash único ya en la nube: no es un fallo operativo
+            return {
+                "ok": True,
+                "ya_existia": True,
+                "configurado": True,
+                "status": 409,
+                "mensaje": (
+                    "Sello ya registrado en Supabase (hash_sha256 único). "
+                    "No se duplicó el registro."
+                ),
+                "payload": payload,
+                "endpoint": endpoint,
+            }
         return {
             "ok": False,
             "configurado": True,
