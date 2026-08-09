@@ -1,60 +1,67 @@
-# 🏭 Plataforma Corporativa de Control de Calidad, Trazabilidad y Gestión de Planta (Perú)
+# 🏭 Validador de planta — Control de calidad, trazabilidad y packing (v1)
 
-¡Bienvenido! Esta es una suite tecnológica e industrial avanzada (AgTech ERP) diseñada a medida para optimizar, auditar y blindar los procesos operativos y logísticos en plantas de empaque (Packing) agroindustrial de exportación.
+Suite AgTech de piso de empaque: Python (Streamlit) + sello Ed25519 (Rust/Python) + SQLite y Supabase opcional.
 
-La plataforma cuenta con una arquitectura híbrida de alto rendimiento que combina la flexibilidad de Python (Streamlit) para la interfaz y gestión de datos, con la velocidad y seguridad matemática de un motor criptográfico nativo en Rust.
+**Estado:** producto **v1 cerrado** para entrega / venta de código.  
+**Paquete de instalación:** ver [INSTALACION.md](INSTALACION.md) · checklist [ENTREGA.md](ENTREGA.md).
 
-## 🚀 Módulos Operativos Integrados
+## Módulos
 
-### 🔌 Módulo 1: Conexión de Balanza y Lectura Rápida de Pallets (SSCC)
-* **Captura Automatizada:** Conexión en línea con balanzas industriales (vía puerto Serial/USB) para el registro automatizado de peso neto en plataforma, eliminando el error humano por digitación.
-* **Estándar Global GS1:** Escaneo e identificación de unidades logísticas de exportación mediante la lectura de códigos GS1-128 / SSCC para un rastreo preciso en almacén.
+### 1 · Balanza y SSCC
+Registro de peso en la última fila PESO y búsqueda de SSCC/caja/pallet/lote en el archivo cargado.
 
-### 🧪 Módulo 2: Control de Límites Máximos de Residuos (LMR) y Certificación SENASA
-* **Seguridad Alimentaria:** Filtro inteligente de consulta de Límites Máximos de Residuos (LMR) de pesticidas y agroquímicos según las exigencias de mercados internacionales.
-* **Validación Fitosanitaria:** Sistema integrado de aprobación digital amarrado a las normativas vigentes de SENASA para autorizar el lote de embarque (Destino Aprobado).
+### 2 · LMR / SENASA
+Consulta de lote y veredicto de laboratorio / columna LMR del archivo.
 
-### 🗺️ Módulo 3: Trazabilidad Inversa (De Caja o Pallet al Fundo de Origen)
-* **Escudo Legal:** Herramienta de auditoría inversa instantánea. Permite ingresar el ID de cualquier caja o pallet observado en el extranjero para rastrear en segundos su turno de empaque, lote de proceso y la parcela o fundo de campo de origen.
+### 3 · Trazabilidad inversa
+De caja o pallet al fundo, productor, lote y turno (columnas detectadas del Excel/CSV).
 
-### 🌡️ Módulo 4: Control Térmico de Cadena de Frío
-* **Preservación de Vida Útil:** Monitoreo, registro automático y alertas visuales de las temperaturas en túneles de pre-frío y cámaras frigoríficas, garantizando rangos óptimos de conservación (5.0°C) para el transporte marítimo de larga distancia.
+### 4 · Cadena de frío
+Lecturas de cámara/túnel/reefer con rangos por fruta; SQLite + Supabase `control_frio`.
 
-### 🚢 Módulo 5: Gestión de Contenedores, Bookings y Precintos de Aduanas
-* **Igual de simple que el Módulo 6:** escanear QR del reefer (cámara on/off), o buscar booking / ISO 6346.
-* **Formulario guiado en 1 clic:** al leer el QR se rellenan booking, contenedor y precintos; botón **Sellar y registrar**.
-* **Doble registro:** SQLite local + POST opcional a Supabase `contenedores_despacho`.
-* **Sin Excel obligatorio:** el panel vive en el dashboard de planta, siempre visible.
+### 5 · Contenedores y precintos
+QR/booking/ISO 6346, formulario de sello, SQLite + Supabase `contenedores_despacho`.
 
-### 📷 Módulo 6: Escaneo QR del Pallet (Supabase)
-* **Cámara del inspector:** `st.camera_input` activa webcam o cámara del celular.
-* **Decodificación:** `pyzbar` + Pillow extraen el texto del QR (JSON, hash SHA-256 o `lote|hash`).
-* **Validación en la nube:** consulta automática a `public.historial_reportes` (lote / `hash_sha256`).
-* **Resultado:** ✅ pallet verificado si el hash está registrado; 🚨 alerta si no coincide.
+### 6 · QR pallet
+Cámara / foto / texto → consulta `historial_reportes` en Supabase.
 
-### 🛡️ Cortafuego de seguridad (aplicación)
-* **Login endurecido:** comparación de secretos en tiempo constante, bloqueo tras intentos fallidos.
-* **Sesión protegida:** token aleatorio + timeout por inactividad + cierre de sesión seguro.
-* **Validación de entrada:** archivos (extensión / tamaño) y textos operativos (QR / SSCC / lote).
-* **Bitácora:** eventos `LOGIN_OK`, `LOGIN_FAIL`, `LOGIN_LOCKOUT`, `UPLOAD_*` en SQLite `bitacora_seguridad`.
-* **Streamlit:** XSRF ON, CORS restringido, límite de upload en `.streamlit/config.toml`.
+### Seguridad (cortafuego)
+Login con bloqueo, token de sesión, timeout, validación de uploads y bitácora local.
 
-## 🛡️ Diferenciadores Tecnológicos Avanzados
+### Sello Ed25519
+Firma de reportes con `LLAVE_PRIVADA` (secrets). Verificación pública de PDF sin login de planta.
 
-### ⚡ Motor Criptográfico Ed25519 (Real + Demo)
-Cada cierre oficial de lote se sella con Ed25519 (`ed25519-dalek` en Rust), generando firma digital (64 bytes) y llave pública (32 bytes) en hexadecimal.
-* **Modo Real + Rust:** Lee `st.secrets["LLAVE_PRIVADA"]` (seed de 32 bytes / 64 hex) y firma con `motor_rust`.
-* **Respaldo Python (Multi-Capa):** `cryptography` (Ed25519) → `PyNaCl` → paquete `ed25519` si existe.
+## Demo
 
-### 🔎 Verificación Pública de PDF
-En la barra lateral: Verificación pública ECC (sin login). Un tercero sube el PDF ejecutivo y la app comprueba la firma Ed25519:
-* **AUTÉNTICO:** Firma válida + llave oficial de planta.
-* **ALTERADO:** La firma no corresponde al mensaje (documento manipulado).
+Archivo de prueba: [demo/packing_demo.csv](demo/packing_demo.csv) (también `.xlsx` si está generado).
 
-### 📂 Historial permanente de reportes (SQLite + Supabase)
-* Cada sello exitoso se archiva en SQLite local y **se envía en automático a Supabase** vía REST HTTP.
-* Campos remotos: **fecha**, **lote**, **hash_sha256**, **inspector**.
-* Secrets: `SUPABASE_URL` + `SUPABASE_KEY` → tabla PostgREST `historial_reportes`.
+## Supabase
 
-### 💼 Interoperabilidad Universal ERP (SAP / Oracle)
-El sistema incluye un algoritmo de limpieza y auditoría que corrige caracteres corruptos, elimina espacios invisibles y parcha celdas vacías de forma masiva en milisegundos. Permite la exportación directa en formato plano universal (CSV Puro) optimizado para la inyección masiva de datos limpios directamente en los módulos logísticos de ERPs corporativos sin bloqueos de formato.
+Ejecutar [supabase/schema.sql](supabase/schema.sql) en el SQL Editor del proyecto.
+
+## Secrets
+
+Plantilla: [.streamlit/secrets.toml.example](.streamlit/secrets.toml.example)
+
+## Alcance v1 (honesto)
+
+| Incluido | No incluido en v1 |
+|----------|-------------------|
+| App completa de planta + PDF/CSV/Excel | Conector nativo SAP/Oracle |
+| Nube Supabase opcional | Balanza industrial por puerto serial plug-and-play |
+| Código en Git | Secretos y base de datos del vendedor |
+
+Export CSV limpio usable para cargar en ERPs de forma manual o con integrador.
+
+## Arranque rápido
+
+```bash
+git clone https://github.com/dena0906zxfbjjluzz-max/validador.git
+cd validador
+pip install -r requirements.txt
+cp .streamlit/secrets.toml.example .streamlit/secrets.toml
+# editar secrets.toml
+streamlit run app.py
+```
+
+Detalle: [INSTALACION.md](INSTALACION.md).
