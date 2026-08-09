@@ -708,77 +708,47 @@ st.markdown(
         text-transform: uppercase;
         font-weight: 700;
     }
-
-    /* Ocultar sidebar izquierda: todo el navegador vive a la derecha */
-    [data-testid="stSidebar"],
-    [data-testid="stSidebarCollapsedControl"],
-    section[data-testid="stSidebar"] {
-        display: none !important;
-        width: 0 !important;
-        min-width: 0 !important;
-        visibility: hidden !important;
-    }
-    [data-testid="stAppViewContainer"] > .main,
-    section.main {
-        margin-left: 0 !important;
-    }
     </style>
     """,
     unsafe_allow_html=True,
 )
 
-_NAV_PLANTA = "Planta / Packing (login)"
-_NAV_ECC = "Verificación pública ECC"
-
-
-def _render_dock_workspace():
-    """Navegación profesional tipo workspace (lado derecho)."""
-    st.markdown(
-        '<p class="sb-card-title">Workspace</p>'
-        '<p class="sb-card-heading">Navegación</p>',
-        unsafe_allow_html=True,
-    )
-    modo = st.radio(
-        "Seleccione el módulo:",
-        [_NAV_PLANTA, _NAV_ECC],
-        key="nav_modo_app",
-    )
-    st.markdown(
-        """
-        <div style="margin-top:0.85rem;padding-top:0.75rem;border-top:1px solid #1A2636;">
-          <span style="font-size:0.7rem;letter-spacing:0.08em;text-transform:uppercase;color:#8A9BB0;font-weight:700;">Estado</span>
-          <p style="margin:0.4rem 0 0 0;font-size:0.82rem;color:#2BB8A8;font-weight:700;">● Tema Cadena de Frío</p>
-          <p style="margin:0.2rem 0 0 0;font-size:0.72rem;color:#8A9BB0;">Teal reefer · sello oro export</p>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-    if st.session_state.get("autenticado"):
-        st.markdown("---")
-        st.caption("Cortafuego de planta")
-        _fw_user = st.session_state.get("fw_usuario") or "inspector"
-        st.caption(f"Sesión: `{_fw_user}`")
-        if st.button("Cerrar sesión segura", key="btn_fw_logout", use_container_width=True):
-            firewall.cerrar_sesion(st.session_state, "logout_manual")
-            st.rerun()
-    return modo
-
-
-# Dock derecho temprano: login / ECC pública (planta autenticada monta el dock en col_der)
-_use_early_dock = not (
-    st.session_state.get("autenticado")
-    and st.session_state.get("nav_modo_app", _NAV_PLANTA) == _NAV_PLANTA
+st.sidebar.markdown(
+    """
+    <p class="sb-nav-label">Workspace</p>
+    <p class="sb-nav-title">Navegación</p>
+    """,
+    unsafe_allow_html=True,
 )
-if _use_early_dock:
-    _col_early_main, _col_early_dock = st.columns([2.55, 1.05], gap="medium")
-    with _col_early_dock:
-        with st.container(border=True):
-            modo_app = _render_dock_workspace()
-else:
-    modo_app = st.session_state.get("nav_modo_app", _NAV_PLANTA)
+modo_app = st.sidebar.radio(
+    "Seleccione el módulo:",
+    ["Planta / Packing (login)", "Verificación pública ECC"],
+    index=0,
+    key="nav_modo_app",
+)
+st.sidebar.markdown(
+    """
+    <div style="margin-top:1rem;padding-top:0.85rem;border-top:1px solid #1A2636;">
+      <span style="font-size:0.7rem;letter-spacing:0.08em;text-transform:uppercase;color:#8A9BB0;font-weight:700;">Estado</span>
+      <p style="margin:0.4rem 0 0 0;font-size:0.82rem;color:#2BB8A8;font-weight:700;">● Tema Cadena de Frío</p>
+      <p style="margin:0.2rem 0 0 0;font-size:0.72rem;color:#8A9BB0;">Teal reefer · sello oro export</p>
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
+
+# Cortafuego: cerrar sesión (solo si autenticado)
+if st.session_state.get("autenticado"):
+    st.sidebar.markdown("---")
+    st.sidebar.caption("🛡️ Cortafuego de planta")
+    _fw_user = st.session_state.get("fw_usuario") or "inspector"
+    st.sidebar.caption(f"Sesión: `{_fw_user}`")
+    if st.sidebar.button("Cerrar sesión segura", key="btn_fw_logout"):
+        firewall.cerrar_sesion(st.session_state, "logout_manual")
+        st.rerun()
 
 # ---------- MÓDULO PÚBLICO: verificación de PDF firmado (sin login) ----------
-if modo_app == _NAV_ECC:
+if modo_app == "Verificación pública ECC":
     st.title("Verificación pública de sello ECC")
     st.write(
         "Suba el PDF ejecutivo firmado para comprobar matemáticamente si la firma "
@@ -879,9 +849,7 @@ if modo_app == _NAV_ECC:
 if not st.session_state["autenticado"]:
     st.title("Acceso restringido - Control de Calidad")
     st.write("Introduzca sus credenciales para ingresar a la plataforma corporativa.")
-    st.info(
-        "¿Solo necesita validar un PDF? Elija a la derecha: **Verificación pública ECC**."
-    )
+    st.info("¿Solo necesita validar un PDF? Use en la barra lateral: **Verificación pública ECC**.")
 
     usuario_correcto, password_correcto, error_creds = cargar_credenciales_acceso()
     if error_creds:
@@ -1257,7 +1225,7 @@ with col_cen:
                     if sb_qr.get("filas") is not None:
                         st.json(sb_qr.get("filas"))
 
-# ── Columna derecha: workspace + 3 paneles ───────────────────────────────────
+# ── Columna derecha: solo atajos de plantá (DB / historial / seguridad) ───────
 with col_der:
     if "panel_der" not in st.session_state:
         st.session_state["panel_der"] = None
@@ -1267,12 +1235,6 @@ with col_der:
             st.session_state["panel_der"] = None
         else:
             st.session_state["panel_der"] = pid
-
-    # Navegación (solo aquí cuando sesión de planta activa)
-    with st.container(border=True):
-        _modo_dock = _render_dock_workspace()
-        if _modo_dock == _NAV_ECC:
-            st.rerun()
 
     with st.container(border=True):
         st.markdown(
@@ -1420,7 +1382,7 @@ with col_der:
             if _pub_oficial:
                 st.caption(f"Llave pública oficial: `{_pub_oficial[:16]}…`")
             st.caption(f"Diagnóstico: {_diag_ecc}")
-            st.caption("PDF firmado: use **Verificación pública ECC** en el panel derecho.")
+            st.caption("PDF firmado: use **Verificación pública ECC** en la barra de navegación.")
 
     # —— Contenido: Historial de sellos ——
     if st.session_state.get("panel_der") == "hist":
