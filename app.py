@@ -1225,7 +1225,7 @@ with col_cen:
                     if sb_qr.get("filas") is not None:
                         st.json(sb_qr.get("filas"))
 
-# ── Columna derecha: solo atajos de plantá (DB / historial / seguridad) ───────
+# ── Columna derecha: 4 atajos independientes (cada botón = su panel) ─────────
 with col_der:
     if "panel_der" not in st.session_state:
         st.session_state["panel_der"] = None
@@ -1236,42 +1236,35 @@ with col_der:
         else:
             st.session_state["panel_der"] = pid
 
+    # id del panel → etiqueta del botón (key Streamlit único por id)
+    _ATAJOS_DER = (
+        ("db", "Base de datos", "nav_der_db"),
+        ("hist", "Historial de sellos", "nav_der_hist"),
+        ("seg", "Seguridad", "nav_der_seg"),
+        ("ecc", "Criptografía", "nav_der_ecc"),
+    )
+
     with st.container(border=True):
         st.markdown(
             '<p class="sb-card-title">Servicios</p>'
             '<p class="sb-card-heading">Atajos de planta</p>'
-            '<p class="sb-side-nav-hint">Menú · un clic</p>',
+            '<p class="sb-side-nav-hint">Menú · un clic · 4 paneles</p>',
             unsafe_allow_html=True,
         )
 
         _p = st.session_state.get("panel_der")
-        if st.button(
-            "Base de datos",
-            key="nav_der_db",
-            type="primary" if _p == "db" else "secondary",
-            use_container_width=True,
-        ):
-            _abrir_panel_der("db")
-            st.rerun()
-        if st.button(
-            "Historial de sellos",
-            key="nav_der_hist",
-            type="primary" if _p == "hist" else "secondary",
-            use_container_width=True,
-        ):
-            _abrir_panel_der("hist")
-            st.rerun()
-        if st.button(
-            "Seguridad",
-            key="nav_der_seg",
-            type="primary" if _p == "seg" else "secondary",
-            use_container_width=True,
-        ):
-            _abrir_panel_der("seg")
-            st.rerun()
-        st.caption("Pulse de nuevo el mismo botón para cerrar el panel.")
+        for _pid, _label, _key in _ATAJOS_DER:
+            if st.button(
+                _label,
+                key=_key,
+                type="primary" if _p == _pid else "secondary",
+                use_container_width=True,
+            ):
+                _abrir_panel_der(_pid)
+                st.rerun()
+        st.caption("Cada botón abre su propio panel. Pulse el mismo para cerrar.")
 
-    # —— Contenido: Base de datos + ECC ——
+    # —— Panel: Base de datos (solo DB / KPI) ——
     if st.session_state.get("panel_der") == "db":
         with st.container(border=True):
             st.markdown(
@@ -1342,7 +1335,9 @@ with col_der:
                             hide_index=True,
                         )
 
-            st.markdown("---")
+    # —— Panel: Criptografía (solo ECC) ——
+    if st.session_state.get("panel_der") == "ecc":
+        with st.container(border=True):
             st.markdown(
                 '<p class="sb-card-title">Criptografía</p>'
                 '<p class="sb-card-heading">Verificación ECC</p>',
@@ -1381,10 +1376,16 @@ with col_der:
             )
             if _pub_oficial:
                 st.caption(f"Llave pública oficial: `{_pub_oficial[:16]}…`")
+                st.caption(
+                    "La llave de secrets ya está activa. El sello del PDF se firmará "
+                    "con ella al generar el reporte."
+                )
             st.caption(f"Diagnóstico: {_diag_ecc}")
-            st.caption("PDF firmado: use **Verificación pública ECC** en la barra de navegación.")
+            st.caption(
+                "PDF firmado: use **Verificación pública ECC** en la barra de navegación."
+            )
 
-    # —— Contenido: Historial de sellos ——
+    # —— Panel: Historial de sellos ——
     if st.session_state.get("panel_der") == "hist":
         with st.container(border=True):
             st.markdown(
