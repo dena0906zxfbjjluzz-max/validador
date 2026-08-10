@@ -3,7 +3,7 @@
 Suite AgTech de piso de empaque: Python (Streamlit) + sello Ed25519 (Rust/Python) + SQLite y Supabase opcional.
 
 **Estado:** producto **v1 cerrado** para entrega / uso / venta de código.  
-**Instalación:** [INSTALACION.md](INSTALACION.md) · acta de entrega [ENTREGA.md](ENTREGA.md) · plantilla de venta [CONTRATO_TRASPASO.md](CONTRATO_TRASPASO.md).
+**Instalación:** [INSTALACION.md](INSTALACION.md) · **Manual de uso (operarios):** [MANUAL.md](MANUAL.md) · acta de entrega [ENTREGA.md](ENTREGA.md) · plantilla de venta [CONTRATO_TRASPASO.md](CONTRATO_TRASPASO.md).
 
 ## Módulos
 
