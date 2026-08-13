@@ -168,35 +168,6 @@ st.markdown(
         background: rgba(212,168,75,0.12);
         color: #D4A84B !important;
     }
-    .vx-tile {
-        border-radius: 14px;
-        padding: 1.05rem 1.1rem;
-        border: 1px solid rgba(26,38,54,0.95);
-        background: linear-gradient(180deg, rgba(17,25,37,0.95), rgba(9,14,21,0.88));
-        box-shadow: 0 10px 28px rgba(0,0,0,0.22);
-        min-height: 7.2rem;
-    }
-    .vx-tile .k {
-        font-size: 0.68rem;
-        letter-spacing: 0.08em;
-        text-transform: uppercase;
-        color: #8A9BB0 !important;
-        font-weight: 700;
-        margin: 0 0 0.35rem 0;
-    }
-    .vx-tile .t {
-        font-size: 1.05rem;
-        font-weight: 800;
-        color: #EAF0F6 !important;
-        margin: 0 0 0.35rem 0;
-        letter-spacing: -0.02em;
-    }
-    .vx-tile .d {
-        font-size: 0.82rem;
-        color: #8A9BB0 !important;
-        margin: 0;
-        line-height: 1.35;
-    }
     .vx-lote-bar {
         display:flex; flex-wrap:wrap; gap:0.75rem; align-items:center; justify-content:space-between;
         padding: 0.85rem 1.1rem;
@@ -1130,26 +1101,11 @@ def render_modulo_alertas_tendencias(
 
 
 
-# ─── Navegación profesional por pantallas + parámetros en sidebar ─────────────
+# ─── Navegación por botones (solo vista_planta / modulo_nav en session_state) ─
 st.sidebar.markdown("---")
-st.sidebar.markdown(
-    '<p class="sb-side-nav-hint">Espacio de trabajo</p>',
-    unsafe_allow_html=True,
-)
+st.sidebar.caption("Navegación")
 
 _tiene_lote = st.session_state.get("df_trabajo") is not None
-_opciones_vista = ["Inicio", "QR pallet", "Contenedores", "Alertas"]
-if _tiene_lote:
-    _opciones_vista = ["Inicio", "Operación del lote", "QR pallet", "Contenedores", "Alertas"]
-
-_mapa_vista = {
-    "Inicio": "inicio",
-    "Operación del lote": "operacion",
-    "QR pallet": "qr",
-    "Contenedores": "contenedores",
-    "Alertas": "alertas",
-}
-_rev_vista = {v: k for k, v in _mapa_vista.items()}
 _MODULOS_OP = [
     "Resumen del lote",
     "1 · Balanza / SSCC",
@@ -1159,63 +1115,61 @@ _MODULOS_OP = [
     "7 · Alertas y tendencias",
     "Limpieza y cierre",
 ]
+_MODULOS_BTNS = [
+    ("Resumen", "Resumen del lote", "nav_mod_resumen"),
+    ("Balanza", "1 · Balanza / SSCC", "nav_mod_balanza"),
+    ("LMR", "2 · LMR / SENASA", "nav_mod_lmr"),
+    ("Trazabilidad", "3 · Trazabilidad", "nav_mod_traz"),
+    ("Frío", "4 · Cadena de frío", "nav_mod_frio"),
+    ("Alertas lote", "7 · Alertas y tendencias", "nav_mod_alertas_lote"),
+    ("Cierre", "Limpieza y cierre", "nav_mod_cierre"),
+]
 
-
-def ir_a_pantalla(vista_id: str, modulo: str | None = None):
-    """Cambia de pantalla sin tocar keys de widgets ya creados (evita error Streamlit)."""
-    st.session_state["vista_planta"] = vista_id
-    if modulo is not None:
-        st.session_state["modulo_nav"] = modulo
-    st.session_state["_sync_nav"] = True
-
-
-# Sincronizar radios ANTES de instanciarlos (upload / botones del turno anterior)
-if st.session_state.pop("_sync_nav", False):
-    _lab = _rev_vista.get(st.session_state.get("vista_planta", "inicio"), "Inicio")
-    if _lab not in _opciones_vista:
-        _lab = "Inicio"
-        st.session_state["vista_planta"] = "inicio"
-    # Borrar keys de widgets y recrear valor (evita StreamlitAPIException)
-    st.session_state.pop("nav_vista_planta_ui", None)
-    st.session_state.pop("nav_modulo_lote_ui", None)
-    st.session_state["nav_vista_planta_ui"] = _lab
-    _mod = st.session_state.get("modulo_nav", "Resumen del lote")
-    if _mod not in _MODULOS_OP:
-        _mod = "Resumen del lote"
-        st.session_state["modulo_nav"] = _mod
-    st.session_state["nav_modulo_lote_ui"] = _mod
-
-_vista_actual = st.session_state.get("vista_planta", "inicio")
-if _vista_actual == "operacion" and not _tiene_lote:
-    _vista_actual = "inicio"
+if st.session_state.get("vista_planta") == "operacion" and not _tiene_lote:
     st.session_state["vista_planta"] = "inicio"
-_label_vista = _rev_vista.get(_vista_actual, "Inicio")
-if _label_vista not in _opciones_vista:
-    _label_vista = "Inicio"
-if st.session_state.get("nav_vista_planta_ui") not in _opciones_vista:
-    st.session_state["nav_vista_planta_ui"] = _label_vista
+if st.session_state.get("modulo_nav") not in _MODULOS_OP:
+    st.session_state["modulo_nav"] = "Resumen del lote"
 
-_sel_vista = st.sidebar.radio(
-    "Pantalla",
-    _opciones_vista,
-    key="nav_vista_planta_ui",
+_nav_vistas = [("Inicio", "inicio", "nav_btn_inicio")]
+if _tiene_lote:
+    _nav_vistas.append(("Operación del lote", "operacion", "nav_btn_operacion"))
+_nav_vistas.extend(
+    [
+        ("QR pallet", "qr", "nav_btn_qr"),
+        ("Contenedores", "contenedores", "nav_btn_cnt"),
+        ("Alertas", "alertas", "nav_btn_alertas"),
+    ]
 )
-st.session_state["vista_planta"] = _mapa_vista[_sel_vista]
-vista = st.session_state["vista_planta"]
+
+for _lab, _vid, _key in _nav_vistas:
+    _active = st.session_state.get("vista_planta") == _vid
+    if st.sidebar.button(
+        _lab,
+        key=_key,
+        type="primary" if _active else "secondary",
+        use_container_width=True,
+    ):
+        st.session_state["vista_planta"] = _vid
+        if _vid == "operacion":
+            st.session_state["modulo_nav"] = st.session_state.get("modulo_nav") or "Resumen del lote"
+        st.rerun()
+
+vista = st.session_state.get("vista_planta", "inicio")
 
 if vista == "operacion":
-    _mod_cur = st.session_state.get("modulo_nav", "Resumen del lote")
-    if _mod_cur not in _MODULOS_OP:
-        _mod_cur = "Resumen del lote"
-    if st.session_state.get("nav_modulo_lote_ui") not in _MODULOS_OP:
-        st.session_state["nav_modulo_lote_ui"] = _mod_cur
-    st.session_state["modulo_nav"] = st.sidebar.radio(
-        "Módulo del lote",
-        _MODULOS_OP,
-        key="nav_modulo_lote_ui",
-    )
-    if st.sidebar.button("← Volver al inicio", key="btn_volver_inicio"):
-        ir_a_pantalla("inicio")
+    st.sidebar.caption("Módulo")
+    for _lab, _mod, _key in _MODULOS_BTNS:
+        _active = st.session_state.get("modulo_nav") == _mod
+        if st.sidebar.button(
+            _lab,
+            key=_key,
+            type="primary" if _active else "secondary",
+            use_container_width=True,
+        ):
+            st.session_state["modulo_nav"] = _mod
+            st.rerun()
+    if st.sidebar.button("Volver al inicio", key="btn_volver_inicio", use_container_width=True):
+        st.session_state["vista_planta"] = "inicio"
         st.rerun()
 
 with st.sidebar.expander("Parámetros de planta", expanded=(vista == "inicio")):
@@ -1269,16 +1223,12 @@ with st.sidebar.expander("Parámetros de planta", expanded=(vista == "inicio")):
     )
 
 st.sidebar.markdown("---")
-st.sidebar.markdown(
-    '<p class="sb-side-nav-hint">Cargar lote</p>',
-    unsafe_allow_html=True,
-)
+st.sidebar.caption("Cargar lote")
 archivo = st.sidebar.file_uploader(
     "Excel / CSV de packing",
     type=["xlsx", "csv"],
     key="uploader_recepcion_empaque",
 )
-st.sidebar.caption("Al cargar abre el panel del lote")
 
 if archivo is not None:
     try:
@@ -1299,7 +1249,8 @@ if archivo is not None:
                 st.session_state["df_trabajo"] = funciones.cargar_datos_archivo(archivo)
                 st.session_state["lote_congelado"] = False
                 st.session_state["nombre_archivo"] = archivo.name
-                ir_a_pantalla("operacion", "Resumen del lote")
+                st.session_state["vista_planta"] = "operacion"
+                st.session_state["modulo_nav"] = "Resumen del lote"
                 firewall.registrar_evento(
                     "UPLOAD_OK",
                     f"Archivo {archivo.name} ({archivo.size} bytes)",
@@ -1315,25 +1266,26 @@ vista = st.session_state.get("vista_planta", "inicio")
 modulo_nav = st.session_state.get("modulo_nav", "Resumen del lote")
 
 
-# ─── Pantalla Inicio (estilo limpio tipo verificación ECC) ────────────────────
+# ─── Pantalla Inicio ──────────────────────────────────────────────────────────
 if vista == "inicio":
     pagina_ecc_style(_plant_label, "Cargue el packing en la barra lateral.")
 
     c1, c2 = st.columns(2)
     with c1:
         if st.button("QR pallet", type="primary", key="tile_qr", use_container_width=True):
-            ir_a_pantalla("qr")
+            st.session_state["vista_planta"] = "qr"
             st.rerun()
         if st.button("Contenedores", key="tile_cnt", use_container_width=True):
-            ir_a_pantalla("contenedores")
+            st.session_state["vista_planta"] = "contenedores"
             st.rerun()
     with c2:
         if st.button("Alertas", key="tile_alertas", use_container_width=True):
-            ir_a_pantalla("alertas")
+            st.session_state["vista_planta"] = "alertas"
             st.rerun()
         if st.session_state.get("df_trabajo") is not None:
-            if st.button("Panel del lote", type="primary", key="btn_ir_operacion", use_container_width=True):
-                ir_a_pantalla("operacion", "Resumen del lote")
+            if st.button("Operación del lote", type="primary", key="btn_ir_operacion", use_container_width=True):
+                st.session_state["vista_planta"] = "operacion"
+                st.session_state["modulo_nav"] = "Resumen del lote"
                 st.rerun()
 
     if st.session_state.get("df_trabajo") is not None:
@@ -1342,7 +1294,7 @@ if vista == "inicio":
 if vista == "qr":
     col_cen = st.container()
     with col_cen:
-        pagina_ecc_style("Escaneo QR del pallet", "Verifica el pallet en historial_reportes.")
+        pagina_ecc_style("QR pallet", "historial_reportes")
         with st.container():
 
             if not st.session_state["camara_qr_activa"]:
@@ -1451,10 +1403,7 @@ if vista == "qr":
                             st.json(sb_qr.get("filas"))
 
 if vista == "inicio":
-    st.markdown("---")
-    st.subheader("Servicios de planta")
-    col_der = st.container()
-    with col_der:
+    with st.expander("Servicios (DB, historial, seguridad, ECC)"):
         if "panel_der" not in st.session_state:
             st.session_state["panel_der"] = None
 
@@ -1464,7 +1413,6 @@ if vista == "inicio":
             else:
                 st.session_state["panel_der"] = pid
 
-        # id del panel → etiqueta del botón (key Streamlit único por id)
         _ATAJOS_DER = (
             ("db", "Base de datos", "nav_der_db"),
             ("hist", "Historial de sellos", "nav_der_hist"),
@@ -1473,15 +1421,17 @@ if vista == "inicio":
         )
 
         _p = st.session_state.get("panel_der")
-        for _pid, _label, _key in _ATAJOS_DER:
-            if st.button(
-                _label,
-                key=_key,
-                type="primary" if _p == _pid else "secondary",
-                use_container_width=True,
-            ):
-                _abrir_panel_der(_pid)
-                st.rerun()
+        bcols = st.columns(4)
+        for i, (_pid, _label, _key) in enumerate(_ATAJOS_DER):
+            with bcols[i]:
+                if st.button(
+                    _label,
+                    key=_key,
+                    type="primary" if _p == _pid else "secondary",
+                    use_container_width=True,
+                ):
+                    _abrir_panel_der(_pid)
+                    st.rerun()
 
         # —— Panel: Base de datos (solo DB / KPI) ——
         if st.session_state.get("panel_der") == "db":
@@ -1698,7 +1648,7 @@ if vista == "inicio":
                             )
 
 if vista == "contenedores":
-    pagina_ecc_style("Contenedores y precintos", "Booking · ISO 6346 · precintos.")
+    pagina_ecc_style("Contenedores", "Booking · ISO 6346 · precintos")
     with st.container():
 
         col_c_scan, col_c_form = st.columns([1, 1])
@@ -1838,7 +1788,7 @@ if vista == "contenedores":
 
 # ─── Alertas (pantalla propia) ────────────────────────────────────────────────
 if vista == "alertas":
-    pagina_ecc_style("Alertas y tendencias", "Frío · pesos · LMR.")
+    pagina_ecc_style("Alertas", "Frío · pesos · LMR")
     _df_al = st.session_state.get("df_trabajo")
     _cols_al = funciones.mapear_columnas_trazabilidad(_df_al) if _df_al is not None else None
     render_modulo_alertas_tendencias(
@@ -1923,10 +1873,12 @@ if vista == "operacion" and st.session_state.get("df_trabajo") is not None:
             with st.expander("Vista previa", expanded=False):
                 st.dataframe(df_original.head(30), width="stretch", hide_index=True)
             if st.button("Alertas", key="btn_resumen_a_m7"):
-                ir_a_pantalla("operacion", "7 · Alertas y tendencias")
+                st.session_state["vista_planta"] = "operacion"
+                st.session_state["modulo_nav"] = "7 · Alertas y tendencias"
                 st.rerun()
             if st.button("Cierre", key="btn_resumen_a_cierre"):
-                ir_a_pantalla("operacion", "Limpieza y cierre")
+                st.session_state["vista_planta"] = "operacion"
+                st.session_state["modulo_nav"] = "Limpieza y cierre"
                 st.rerun()
 
 

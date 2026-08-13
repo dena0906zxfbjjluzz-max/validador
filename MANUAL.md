@@ -29,15 +29,15 @@ En el menú de la izquierda elija:
 
 ### Navegación dentro de Planta
 
-Tras el login, use **Espacio de trabajo** en la barra lateral:
+Tras el login, use los **botones de Navegación** en la barra lateral (activo = primario):
 
 | Pantalla | Qué hace |
 |----------|----------|
-| **Inicio** | Tarjetas de acceso y atajos (no es una lista de módulos) |
-| **Operación del lote** | Se abre al cargar el Excel/CSV; elija **un módulo** a la vez |
-| **QR pallet / Contenedores / Alertas** | Pantallas propias, sin mezclar con el resto |
+| **Inicio** | Atajos 2×2 hacia QR, contenedores, alertas y lote |
+| **Operación del lote** | Aparece al cargar Excel/CSV; elija un módulo (Resumen, Balanza, LMR, …) |
+| **QR pallet / Contenedores / Alertas** | Pantallas propias |
 
-El archivo se carga desde **Cargar lote** (barra lateral). Al subirlo, la app entra sola al panel del lote.
+El archivo se carga desde **Cargar lote**. Al subirlo, la app entra sola a **Operación del lote → Resumen**.
 
 ---
 
