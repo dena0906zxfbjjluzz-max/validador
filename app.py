@@ -1403,7 +1403,10 @@ if vista == "qr":
                             st.json(sb_qr.get("filas"))
 
 if vista == "inicio":
-    with st.expander("Servicios (DB, historial, seguridad, ECC)"):
+    st.markdown("---")
+    st.subheader("Servicios de planta")
+    col_der = st.container()
+    with col_der:
         if "panel_der" not in st.session_state:
             st.session_state["panel_der"] = None
 
@@ -1413,6 +1416,7 @@ if vista == "inicio":
             else:
                 st.session_state["panel_der"] = pid
 
+        # id del panel → etiqueta del botón (key Streamlit único por id)
         _ATAJOS_DER = (
             ("db", "Base de datos", "nav_der_db"),
             ("hist", "Historial de sellos", "nav_der_hist"),
@@ -1421,17 +1425,15 @@ if vista == "inicio":
         )
 
         _p = st.session_state.get("panel_der")
-        bcols = st.columns(4)
-        for i, (_pid, _label, _key) in enumerate(_ATAJOS_DER):
-            with bcols[i]:
-                if st.button(
-                    _label,
-                    key=_key,
-                    type="primary" if _p == _pid else "secondary",
-                    use_container_width=True,
-                ):
-                    _abrir_panel_der(_pid)
-                    st.rerun()
+        for _pid, _label, _key in _ATAJOS_DER:
+            if st.button(
+                _label,
+                key=_key,
+                type="primary" if _p == _pid else "secondary",
+                use_container_width=True,
+            ):
+                _abrir_panel_der(_pid)
+                st.rerun()
 
         # —— Panel: Base de datos (solo DB / KPI) ——
         if st.session_state.get("panel_der") == "db":
