@@ -2006,6 +2006,40 @@ def enviar_control_frio_supabase(registro: dict, timeout: float = 15.0) -> dict:
     }
 
 
+def purgar_control_frio_local(solo_rupturas: bool = False) -> dict:
+    """
+    Borra lecturas de frío en SQLite local (planta_calidad_prod.db).
+    Las alertas de la app leen esta base, no solo Supabase.
+    """
+    inicializar_base_datos()
+    conn = _conectar_db()
+    try:
+        cur = conn.cursor()
+        if solo_rupturas:
+            cur.execute(
+                """
+                DELETE FROM control_frio
+                WHERE upper(COALESCE(estado, '')) LIKE '%RUPTURA%'
+                """
+            )
+        else:
+            cur.execute("DELETE FROM control_frio")
+        borradas = int(cur.rowcount or 0)
+        conn.commit()
+        return {
+            "ok": True,
+            "borradas": borradas,
+            "mensaje": (
+                f"Se borraron {borradas} lectura(s) de frío en SQLite local"
+                + (" (solo rupturas)." if solo_rupturas else ".")
+            ),
+        }
+    except Exception as e:
+        return {"ok": False, "borradas": 0, "mensaje": f"No se pudo borrar: {e}"}
+    finally:
+        conn.close()
+
+
 def registrar_control_frio(
     camara,
     temperatura,

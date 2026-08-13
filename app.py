@@ -1487,6 +1487,26 @@ if vista == "dashboard":
     else:
         st.info("Sin rupturas recientes en la ventana de alerta.")
 
+    if _es_supervisor:
+        with st.expander("Borrar alertas de frío (SQLite local)"):
+            st.caption(
+                "Las alertas se leen de la base local de la app, no solo de Supabase. "
+                "Si borró en Supabase y siguen apareciendo, limpie aquí."
+            )
+            c_del1, c_del2 = st.columns(2)
+            with c_del1:
+                if st.button("Borrar solo rupturas", key="dash_del_rupturas"):
+                    r = funciones.purgar_control_frio_local(solo_rupturas=True)
+                    (st.success if r.get("ok") else st.error)(r.get("mensaje"))
+                    if r.get("ok"):
+                        st.rerun()
+            with c_del2:
+                if st.button("Borrar todas las lecturas de frío", key="dash_del_frio_all"):
+                    r = funciones.purgar_control_frio_local(solo_rupturas=False)
+                    (st.success if r.get("ok") else st.error)(r.get("mensaje"))
+                    if r.get("ok"):
+                        st.rerun()
+
     cfg_av = funciones._config_avisos()
     st.caption(
         "Avisos: "
@@ -2065,6 +2085,21 @@ if vista == "contenedores":
 # ─── Alertas (pantalla propia) ────────────────────────────────────────────────
 if vista == "alertas":
     pagina_ecc_style("Alertas", "Frío · pesos · LMR")
+    if _es_supervisor:
+        with st.expander("Borrar alertas de frío (SQLite local)"):
+            st.caption(
+                "Supabase ≠ alertas de pantalla. Esta app usa `planta_calidad_prod.db`."
+            )
+            if st.button("Borrar rupturas locales", key="alertas_del_rupturas"):
+                r = funciones.purgar_control_frio_local(solo_rupturas=True)
+                (st.success if r.get("ok") else st.error)(r.get("mensaje"))
+                if r.get("ok"):
+                    st.rerun()
+            if st.button("Borrar todo el frío local", key="alertas_del_frio_all"):
+                r = funciones.purgar_control_frio_local(solo_rupturas=False)
+                (st.success if r.get("ok") else st.error)(r.get("mensaje"))
+                if r.get("ok"):
+                    st.rerun()
     _df_al = st.session_state.get("df_trabajo")
     _cols_al = (
         funciones.resolver_mapa_columnas(_df_al, st.session_state.get("mapeo_columnas_manual"))
