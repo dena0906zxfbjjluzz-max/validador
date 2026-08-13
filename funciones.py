@@ -166,6 +166,50 @@ def mapear_columnas_trazabilidad(df):
     return {clave: encontrar_columna(df, aliases) for clave, aliases in ALIAS_COLUMNAS.items()}
 
 
+CAMPOS_MAPEO_UI = (
+    "id_unidad",
+    "lote",
+    "peso",
+    "calibre",
+    "fundo",
+    "productor",
+    "turno",
+    "cosecha",
+    "lmr",
+    "categoria",
+)
+CAMPOS_CRITICOS_PACKING = ("lote", "peso", "calibre")
+
+
+def resolver_mapa_columnas(df, mapeo_manual: dict | None = None) -> dict:
+    """
+    Combina detección automática por alias con un mapeo manual del usuario.
+    En mapeo_manual: valor None o '' deja el auto; '(ninguna)' fuerza sin columna.
+    """
+    auto = mapear_columnas_trazabilidad(df)
+    if not mapeo_manual:
+        return auto
+    out = dict(auto)
+    cols = set(str(c) for c in df.columns)
+    for clave, elegido in mapeo_manual.items():
+        if clave not in out:
+            continue
+        if elegido is None or elegido == "" or elegido == "(auto)":
+            continue
+        if elegido == "(ninguna)":
+            out[clave] = None
+            continue
+        if str(elegido) in cols:
+            out[clave] = str(elegido)
+    return out
+
+
+def campos_criticos_sin_mapear(mapa: dict | None) -> list[str]:
+    """Nombres legibles de LOTE/PESO/CALIBRE aún sin columna asignada."""
+    mapa = mapa or {}
+    return [k.upper() for k in CAMPOS_CRITICOS_PACKING if not mapa.get(k)]
+
+
 def _valor_celda(fila, col, default="N/D"):
     if col is None or col not in fila.index:
         return default
@@ -3145,6 +3189,162 @@ def resumen_dashboard_turno(fecha: datetime.date | None = None) -> dict:
         "lotes_sellados": lotes_sellados,
         "alertas_frio": frio,
     }
+
+
+def generar_pdf_dashboard_turno(
+    dash: dict,
+    planta_nombre: str = "",
+    inspector: str = "",
+    rol: str = "",
+):
+    """PDF ejecutivo del dashboard de turno (KPIs + alertas de frío)."""
+    buffer = io.BytesIO()
+    doc = SimpleDocTemplate(
+        buffer,
+        pagesize=letter,
+        rightMargin=30,
+        leftMargin=30,
+        topMargin=30,
+        bottomMargin=30,
+    )
+    story = []
+    styles = getSampleStyleSheet()
+    titulo_estilo = ParagraphStyle(
+        "TituloDash",
+        parent=styles["Heading1"],
+        fontSize=15,
+        textColor=colors.HexColor("#1F4E78"),
+        spaceAfter=8,
+    )
+    story.append(Paragraph("<b>DASHBOARD DE TURNO — RESUMEN OPERATIVO</b>", titulo_estilo))
+
+    fecha_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    fecha_turno = dash.get("fecha") or fecha_str[:10]
+    estado = dash.get("estado_turno") or "—"
+    sub_bits = []
+    if str(planta_nombre).strip():
+        sub_bits.append(f"<b>Planta:</b> {planta_nombre}")
+    sub_bits.append(f"<b>Turno:</b> {fecha_turno}")
+    sub_bits.append(f"<b>Estado:</b> {estado}")
+    if str(inspector).strip():
+        sub_bits.append(f"<b>Emitido por:</b> {inspector}")
+    if str(rol).strip():
+        sub_bits.append(f"<b>Rol:</b> {rol}")
+    sub_bits.append(f"<b>Generado:</b> {fecha_str}")
+    story.append(Paragraph(" | ".join(sub_bits), styles["Normal"]))
+    story.append(Spacer(1, 12))
+
+    k = dash.get("kpis") or {}
+    datos_kpi = [
+        ["Indicador", "Valor"],
+        ["Sellos ECC hoy", str(k.get("sellos_ecc", 0))],
+        ["Lecturas de frío hoy", str(k.get("lecturas_frio", 0))],
+        ["Rupturas de frío hoy", str(k.get("rupturas_frio", 0))],
+        ["Contenedores (total)", str(k.get("contenedores", 0))],
+        ["Cargas packing (sesión)", str(k.get("cargas_packing", 0))],
+    ]
+    t = Table(datos_kpi, colWidths=[260, 220])
+    t.setStyle(
+        TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (1, 0), colors.HexColor("#1F4E78")),
+                ("TEXTCOLOR", (0, 0), (1, 0), colors.whitesmoke),
+                ("ALIGN", (0, 0), (-1, -1), "LEFT"),
+                ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+                ("BACKGROUND", (0, 1), (-1, -1), colors.HexColor("#F2F2F2")),
+                ("GRID", (0, 0), (-1, -1), 1, colors.HexColor("#D9D9D9")),
+            ]
+        )
+    )
+    story.append(t)
+    story.append(Spacer(1, 14))
+
+    af = dash.get("alertas_frio") or {}
+    story.append(
+        Paragraph(
+            f"<b>Alertas de frío:</b> {af.get('mensaje') or 'Sin detalle'}",
+            styles["Normal"],
+        )
+    )
+    story.append(Spacer(1, 6))
+    activas = af.get("activas") or []
+    if not activas:
+        story.append(Paragraph("Sin rupturas activas en la ventana de alerta.", styles["Normal"]))
+    else:
+        filas_af = [["Cámara", "Temp.", "Producto", "Inspector", "Hora", "Estado"]]
+        for a in activas[:20]:
+            filas_af.append(
+                [
+                    str(a.get("camara") or "—")[:24],
+                    str(a.get("temperatura") if a.get("temperatura") is not None else "—"),
+                    str(a.get("producto") or "—")[:18],
+                    str(a.get("inspector") or "—")[:18],
+                    str(a.get("hora") or "—")[:19],
+                    str(a.get("estado") or "—")[:22],
+                ]
+            )
+        ta = Table(filas_af, colWidths=[75, 45, 70, 70, 85, 85])
+        ta.setStyle(
+            TableStyle(
+                [
+                    ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#8B2942")),
+                    ("TEXTCOLOR", (0, 0), (-1, 0), colors.whitesmoke),
+                    ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+                    ("FONTSIZE", (0, 0), (-1, -1), 7),
+                    ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#D9D9D9")),
+                    ("BACKGROUND", (0, 1), (-1, -1), colors.HexColor("#FFF5F5")),
+                    ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                ]
+            )
+        )
+        story.append(ta)
+
+    story.append(Spacer(1, 14))
+    lotes = dash.get("lotes_sellados") or []
+    story.append(Paragraph(f"<b>Sellos ECC del día ({len(lotes)}):</b>", styles["Normal"]))
+    story.append(Spacer(1, 4))
+    if not lotes:
+        story.append(Paragraph("Aún no hay sellos archivados hoy.", styles["Normal"]))
+    else:
+        filas_l = [["Hora", "Lote", "Responsable", "Producto", "Registros"]]
+        for L in lotes[:15]:
+            filas_l.append(
+                [
+                    str(L.get("fecha_hora") or "—")[:19],
+                    str(L.get("lote") or "—")[:20],
+                    str(L.get("responsable") or "—")[:18],
+                    str(L.get("producto") or "—")[:16],
+                    str(L.get("registros") if L.get("registros") is not None else "—"),
+                ]
+            )
+        tl = Table(filas_l, colWidths=[95, 90, 90, 85, 60])
+        tl.setStyle(
+            TableStyle(
+                [
+                    ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1F4E78")),
+                    ("TEXTCOLOR", (0, 0), (-1, 0), colors.whitesmoke),
+                    ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+                    ("FONTSIZE", (0, 0), (-1, -1), 7),
+                    ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#D9D9D9")),
+                    ("BACKGROUND", (0, 1), (-1, -1), colors.HexColor("#F2F2F2")),
+                ]
+            )
+        )
+        story.append(tl)
+
+    story.append(Spacer(1, 16))
+    story.append(
+        Paragraph(
+            "<i>Documento operativo de turno. No sustituye el reporte ejecutivo con sello Ed25519.</i>",
+            styles["Normal"],
+        )
+    )
+    doc.build(story)
+    buffer.seek(0)
+    return buffer
+
+
 # ─── Avisos por correo / WhatsApp (ruptura de frío) ───────────────────────────
 
 

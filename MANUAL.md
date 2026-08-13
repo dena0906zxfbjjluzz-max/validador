@@ -34,7 +34,7 @@ Tras el login, use los **botones de Navegación** en la barra lateral (activo = 
 | Pantalla | Qué hace |
 |----------|----------|
 | **Inicio** | Atajos 2×2 hacia dashboard, QR, contenedores, alertas y lote |
-| **Dashboard** | KPIs del turno + alertas de frío recientes |
+| **Dashboard** | KPIs del turno + alertas de frío + PDF del turno |
 | **Operación del lote** | Aparece al cargar Excel/CSV; elija un módulo (Resumen, Balanza, LMR, …) |
 | **QR pallet / Contenedores / Alertas** | Pantallas propias |
 
@@ -47,7 +47,14 @@ El archivo se carga desde **Cargar lote**. Al subirlo, la app entra sola a **Ope
 1. Abra el enlace de la app (Streamlit Cloud o local).  
 2. Elija **Planta / Packing (login)**.  
 3. Escriba su **Usuario** y **Contraseña** (las da el administrador de planta).  
-4. Toque **Ingresar**.
+4. Toque **Ingresar**. La barra lateral muestra su **rol** (`supervisor` u `operario`).
+
+### Roles
+
+| Rol | Puede |
+|-----|--------|
+| **Supervisor** | Todo: congelar/descongelar lote, reenviar avisos de frío, PDF |
+| **Operario** | Cargar lote, mapear columnas, módulos de control; no cierra ni descongela el lote |
 
 ### Si no puede entrar
 
@@ -55,7 +62,7 @@ El archivo se carga desde **Cargar lote**. Al subirlo, la app entra sola a **Ope
 |--------|-----------|
 | Credenciales incorrectas | Revise mayúsculas y vuelva a intentar |
 | Bloqueo por muchos intentos | Espere o pida al administrador que le habilite de nuevo |
-| Error de secrets | La planta debe configurar `usuario` / `clave` en Streamlit Secrets |
+| Error de secrets | La planta debe configurar `usuario` / `clave` (y opcional `rol`) en Streamlit Secrets |
 
 ### Cerrar sesión
 
@@ -73,7 +80,8 @@ Cierre sesión al terminar su turno, sobre todo en PC compartidas.
 
 1. Entre con su usuario.  
 2. Suba el **Excel (.xlsx)** o **CSV** del packing del lote.  
-3. Espere a que la app lea filas y muestre el panel de control.
+3. En **Resumen**, si avisa columnas faltantes, abra **Mapear columnas del packing** y asigne LOTE / PESO / CALIBRE (u otras).  
+4. Continue con los módulos de control.
 
 > Archivos de prueba del sistema: carpeta `demo/` (`packing_demo.csv` / `.xlsx`).
 

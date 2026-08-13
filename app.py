@@ -46,23 +46,109 @@ def cargar_credenciales_acceso() -> tuple[str | None, str | None, str | None]:
     Lee el acceso de planta desde st.secrets['credenciales'].
     Retorna (usuario, clave, error_si_falla).
     """
-    try:
-        creds = st.secrets["credenciales"]
-        usuario = str(creds["usuario"]).strip()
-        clave = str(creds["clave"]).strip()
-        if not usuario or not clave:
-            return None, None, (
-                "st.secrets['credenciales'] está incompleto: defina `usuario` y `clave`."
-            )
-        return usuario, clave, None
-    except Exception:
+    accesos, err = listar_accesos_planta()
+    if err:
+        return None, None, err
+    if not accesos:
         return None, None, (
             "No se encontraron credenciales en secrets. Configure en Streamlit Cloud "
             "(Settings → Secrets) o en .streamlit/secrets.toml:\n\n"
             "[credenciales]\n"
             'usuario = "su_usuario"\n'
-            'clave = "su_clave_secreta"'
+            'clave = "su_clave_secreta"\n'
+            'rol = "supervisor"'
         )
+    prim = accesos[0]
+    return prim["usuario"], prim["clave"], None
+
+
+def listar_accesos_planta() -> tuple[list[dict], str | None]:
+    """
+    Usuarios de planta con rol (operario | supervisor).
+    Fuentes (en orden):
+      - lista [[usuarios]] o tabla [usuarios.*]
+      - [credenciales] (+ opcional [credenciales_operario])
+    """
+    candidatos: list[dict] = []
+
+    def _push(usuario, clave, rol):
+        u = str(usuario or "").strip()
+        c = str(clave or "")
+        if not u or not c:
+            return
+        candidatos.append(
+            {
+                "usuario": u,
+                "clave": c,
+                "rol": firewall.normalizar_rol(rol),
+            }
+        )
+
+    try:
+        usuarios_sec = st.secrets.get("usuarios")
+        if usuarios_sec is not None:
+            # Lista tipo [[usuarios]]
+            if isinstance(usuarios_sec, list):
+                for item in usuarios_sec:
+                    try:
+                        _push(item.get("usuario"), item.get("clave"), item.get("rol"))
+                    except Exception:
+                        pass
+            else:
+                # Tabla anidada [usuarios.nombre]
+                try:
+                    for _k in usuarios_sec:
+                        item = usuarios_sec[_k]
+                        try:
+                            _push(
+                                item.get("usuario") or _k,
+                                item.get("clave"),
+                                item.get("rol"),
+                            )
+                        except Exception:
+                            pass
+                except Exception:
+                    pass
+    except Exception:
+        pass
+
+    try:
+        creds = st.secrets.get("credenciales")
+        if creds is not None:
+            _push(
+                creds.get("usuario"),
+                creds.get("clave"),
+                creds.get("rol", "supervisor"),
+            )
+    except Exception:
+        pass
+
+    try:
+        op = st.secrets.get("credenciales_operario")
+        if op is not None:
+            _push(op.get("usuario"), op.get("clave"), op.get("rol", "operario"))
+    except Exception:
+        pass
+
+    # Deduplicar por usuario (primera aparición gana)
+    vistos = set()
+    unicos = []
+    for c in candidatos:
+        key = c["usuario"].lower()
+        if key in vistos:
+            continue
+        vistos.add(key)
+        unicos.append(c)
+
+    if not unicos:
+        return [], (
+            "No se encontraron credenciales en secrets. Configure:\n\n"
+            "[credenciales]\n"
+            'usuario = "su_usuario"\n'
+            'clave = "su_clave_secreta"\n'
+            'rol = "supervisor"'
+        )
+    return unicos, None
 
 
 
@@ -798,9 +884,11 @@ if st.session_state.get("autenticado"):
     st.sidebar.markdown("---")
     st.sidebar.caption("🛡️ Cortafuego de planta")
     _fw_user = st.session_state.get("fw_usuario") or "inspector"
-    st.sidebar.caption(f"Sesión: `{_fw_user}`")
+    _fw_rol = st.session_state.get("rol_planta") or "supervisor"
+    st.sidebar.caption(f"Sesión: `{_fw_user}` · {_fw_rol}")
     if st.sidebar.button("Cerrar sesión segura", key="btn_fw_logout"):
         firewall.cerrar_sesion(st.session_state, "logout_manual")
+        st.session_state["rol_planta"] = None
         st.rerun()
 
 # ---------- MÓDULO PÚBLICO: verificación de PDF firmado (sin login) ----------
@@ -906,7 +994,7 @@ if not st.session_state["autenticado"]:
     st.title("Acceso restringido - Control de Calidad")
     st.caption("Credenciales de planta. Para PDF use Verificación pública ECC.")
 
-    usuario_correcto, password_correcto, error_creds = cargar_credenciales_acceso()
+    accesos_planta, error_creds = listar_accesos_planta()
     if error_creds:
         st.error(error_creds)
         st.stop()
@@ -925,14 +1013,14 @@ if not st.session_state["autenticado"]:
     passwordInput = st.text_input("Contraseña:", type="password", key="login_clave")
 
     if st.button("Ingresar", type="primary", key="btn_login_planta"):
-        resultado_login = firewall.intentar_login(
+        resultado_login = firewall.intentar_login_lista(
             st.session_state,
             usuario_in=usuarioInput,
             clave_in=passwordInput,
-            usuario_ok=usuario_correcto or "",
-            clave_ok=password_correcto or "",
+            candidatos=accesos_planta,
         )
         if resultado_login.get("ok"):
+            st.session_state["rol_planta"] = resultado_login.get("rol") or "supervisor"
             st.success(resultado_login.get("mensaje") or "Acceso concedido.")
             st.rerun()
         else:
@@ -941,6 +1029,12 @@ if not st.session_state["autenticado"]:
                 st.rerun()
     st.caption(f"Cortafuego · máx. {firewall.politica()['max_intentos']} intentos")
     st.stop()
+
+# Rol de sesión (compat: sesiones previas sin rol → supervisor)
+if "rol_planta" not in st.session_state or not st.session_state.get("rol_planta"):
+    st.session_state["rol_planta"] = "supervisor"
+_es_supervisor = firewall.es_supervisor(st.session_state)
+_rol_label = st.session_state.get("rol_planta") or "supervisor"
 
 # Sesión autenticada: validar token + timeout en cada rerun
 _sesion_ok, _motivo_sesion = firewall.sesion_valida(st.session_state)
@@ -1252,6 +1346,9 @@ if archivo is not None:
                 st.session_state["df_trabajo"] = funciones.cargar_datos_archivo(archivo)
                 st.session_state["lote_congelado"] = False
                 st.session_state["nombre_archivo"] = archivo.name
+                st.session_state["mapeo_columnas_manual"] = {}
+                for _c in funciones.CAMPOS_MAPEO_UI:
+                    st.session_state.pop(f"map_col_{_c}", None)
                 st.session_state["vista_planta"] = "operacion"
                 st.session_state["modulo_nav"] = "Resumen del lote"
                 firewall.registrar_evento(
@@ -1364,25 +1461,28 @@ if vista == "dashboard":
         )
     )
     if activas and cfg_av.get("habilitado"):
-        if st.button("Reenviar aviso de la última ruptura", key="dash_reenviar_aviso"):
-            ult = activas[0]
-            r = funciones.notificar_ruptura_frio(
-                {
-                    "camara": ult.get("camara"),
-                    "temperatura": ult.get("temperatura"),
-                    "temp_min": "?",
-                    "temp_max": "?",
-                    "producto": ult.get("producto"),
-                    "inspector": ult.get("inspector"),
-                    "hora_registro": ult.get("hora"),
-                    "estado": ult.get("estado"),
-                },
-                forzar=True,
-            )
-            if r.get("ok"):
-                st.success(r.get("mensaje"))
-            else:
-                st.warning(r.get("mensaje") or "No enviado")
+        if _es_supervisor:
+            if st.button("Reenviar aviso de la última ruptura", key="dash_reenviar_aviso"):
+                ult = activas[0]
+                r = funciones.notificar_ruptura_frio(
+                    {
+                        "camara": ult.get("camara"),
+                        "temperatura": ult.get("temperatura"),
+                        "temp_min": "?",
+                        "temp_max": "?",
+                        "producto": ult.get("producto"),
+                        "inspector": ult.get("inspector"),
+                        "hora_registro": ult.get("hora"),
+                        "estado": ult.get("estado"),
+                    },
+                    forzar=True,
+                )
+                if r.get("ok"):
+                    st.success(r.get("mensaje"))
+                else:
+                    st.warning(r.get("mensaje") or "No enviado")
+        else:
+            st.caption("Reenvío de avisos: solo supervisor.")
 
     lotes = dash.get("lotes_sellados") or []
     with st.expander(f"Sellos ECC de hoy ({len(lotes)})"):
@@ -1390,6 +1490,21 @@ if vista == "dashboard":
             st.dataframe(pd.DataFrame(lotes), width="stretch", hide_index=True)
         else:
             st.caption("Aún no hay sellos archivados hoy.")
+
+    pdf_dash = funciones.generar_pdf_dashboard_turno(
+        dash,
+        planta_nombre=_plant_label,
+        inspector=st.session_state.get("fw_usuario") or "Inspector",
+        rol=_rol_label,
+    )
+    st.download_button(
+        "Descargar PDF del turno",
+        data=pdf_dash,
+        file_name=f"dashboard_turno_{dash.get('fecha', 'hoy')}.pdf",
+        mime="application/pdf",
+        key="dl_pdf_dashboard_turno",
+        type="primary",
+    )
 
 if vista == "qr":
     col_cen = st.container()
@@ -1892,7 +2007,11 @@ if vista == "contenedores":
 if vista == "alertas":
     pagina_ecc_style("Alertas", "Frío · pesos · LMR")
     _df_al = st.session_state.get("df_trabajo")
-    _cols_al = funciones.mapear_columnas_trazabilidad(_df_al) if _df_al is not None else None
+    _cols_al = (
+        funciones.resolver_mapa_columnas(_df_al, st.session_state.get("mapeo_columnas_manual"))
+        if _df_al is not None
+        else None
+    )
     render_modulo_alertas_tendencias(
         df_packing=_df_al,
         cols_mapa=_cols_al,
@@ -1911,14 +2030,70 @@ if vista == "operacion" and st.session_state.get("df_trabajo") is not None:
             def __init__(self, name):
                 self.name = name
         archivo = archivo if archivo is not None else _ArchivoProxy(archivo_nombre)
-        cols_traza = funciones.mapear_columnas_trazabilidad(df_original)
+        if "mapeo_columnas_manual" not in st.session_state:
+            st.session_state["mapeo_columnas_manual"] = {}
+        cols_traza = funciones.resolver_mapa_columnas(
+            df_original,
+            st.session_state.get("mapeo_columnas_manual"),
+        )
 
-        columnas_requeridas = ["LOTE", "PESO", "CALIBRE"]
-        columnas_actuales_mayus = [c.upper() for c in df_original.columns]
-        columnas_faltantes = [req for req in columnas_requeridas if not any(req in col for col in columnas_actuales_mayus)]
+        columnas_faltantes = funciones.campos_criticos_sin_mapear(cols_traza)
 
         if len(columnas_faltantes) > 0:
-            st.warning(f"⚠️ **Aviso de Estructura:** El archivo no contiene columnas con nombres exactos como **{', '.join(columnas_faltantes)}**. La app operará con normalidad en modo flexible.")
+            st.warning(
+                f"Faltan columnas clave: **{', '.join(columnas_faltantes)}**. "
+                "Asigne el mapeo abajo o continue en modo flexible."
+            )
+        else:
+            st.caption(
+                "Columnas clave: "
+                + " · ".join(
+                    f"{k.upper()}→`{cols_traza[k]}`"
+                    for k in ("lote", "peso", "calibre")
+                    if cols_traza.get(k)
+                )
+            )
+
+        with st.expander("Mapear columnas del packing", expanded=bool(columnas_faltantes)):
+            st.caption("Si el Excel usa otros nombres, elija la columna real de cada campo.")
+            opts_base = ["(auto)", "(ninguna)"] + [str(c) for c in df_original.columns]
+            manual_prev = dict(st.session_state.get("mapeo_columnas_manual") or {})
+            nuevo_manual = {}
+            grid = st.columns(3)
+            for i, campo in enumerate(funciones.CAMPOS_MAPEO_UI):
+                with grid[i % 3]:
+                    actual = manual_prev.get(campo)
+                    if actual and actual in opts_base:
+                        idx = opts_base.index(actual)
+                    elif cols_traza.get(campo) and cols_traza[campo] in opts_base:
+                        # mostrar auto detectado como selección visual en (auto)
+                        idx = 0
+                    else:
+                        idx = 0
+                    elegido = st.selectbox(
+                        campo.replace("_", " ").title(),
+                        opts_base,
+                        index=idx,
+                        key=f"map_col_{campo}",
+                    )
+                    if elegido == "(auto)":
+                        nuevo_manual.pop(campo, None)
+                    else:
+                        nuevo_manual[campo] = elegido
+            bmap1, bmap2 = st.columns(2)
+            with bmap1:
+                if st.button("Aplicar mapeo", type="primary", key="btn_aplicar_mapeo"):
+                    st.session_state["mapeo_columnas_manual"] = {
+                        k: v for k, v in nuevo_manual.items() if v not in (None, "", "(auto)")
+                    }
+                    st.success("Mapeo aplicado.")
+                    st.rerun()
+            with bmap2:
+                if st.button("Restablecer auto", key="btn_reset_mapeo"):
+                    st.session_state["mapeo_columnas_manual"] = {}
+                    for _c in funciones.CAMPOS_MAPEO_UI:
+                        st.session_state.pop(f"map_col_{_c}", None)
+                    st.rerun()
 
         if "Observaciones_Rechazo" not in df_original.columns:
             df_original["Observaciones_Rechazo"] = ""
@@ -2553,18 +2728,24 @@ if vista == "operacion" and st.session_state.get("df_trabajo") is not None:
             col_c1, col_c2 = st.columns(2)
             with col_c1:
                 if not st.session_state["lote_congelado"]:
-                    if st.button("🔒 Congelar y Aprobar Lote (Cierre Oficial)"):
-                        if chk_pulpa and chk_cuerpo:
-                            st.session_state["lote_congelado"] = True
-                            st.success("¡Lote aprobado, firmado y congelado correctamente para gerencia!")
-                            st.rerun()
-                        else:
-                            st.error("⚠️ Debe marcar todas las verificaciones del checklist obligatorio antes de aprobar el lote.")
+                    if _es_supervisor:
+                        if st.button("🔒 Congelar y Aprobar Lote (Cierre Oficial)"):
+                            if chk_pulpa and chk_cuerpo:
+                                st.session_state["lote_congelado"] = True
+                                st.success("¡Lote aprobado, firmado y congelado correctamente para gerencia!")
+                                st.rerun()
+                            else:
+                                st.error("⚠️ Debe marcar todas las verificaciones del checklist obligatorio antes de aprobar el lote.")
+                    else:
+                        st.caption("Congelar/aprobar: solo supervisor.")
                 else:
-                    if st.button("🔓 Descongelar Lote (Habilitar Edición)"):
-                        st.session_state["lote_congelado"] = False
-                        st.warning("Lote habilitado para modificaciones.")
-                        st.rerun()
+                    if _es_supervisor:
+                        if st.button("🔓 Descongelar Lote (Habilitar Edición)"):
+                            st.session_state["lote_congelado"] = False
+                            st.warning("Lote habilitado para modificaciones.")
+                            st.rerun()
+                    else:
+                        st.caption("Lote congelado. Solo un supervisor puede descongelarlo.")
 
             bitacora_db_data = funciones.cargar_bitacora_db()
             if bitacora_db_data:

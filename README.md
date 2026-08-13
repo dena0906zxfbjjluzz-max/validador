@@ -29,10 +29,13 @@ Cámara / foto / texto → consulta `historial_reportes` en Supabase.
 Inteligencia operativa de planta: reglas + z-score sobre cadena de frío (SQLite) y el packing cargado (pesos atípicos, LMR por productor, merma). Anticipa rupturas y patrones de riesgo sin modelos externos.
 
 ### Dashboard de turno
-KPIs del día (sellos ECC, lecturas/rupturas de frío, contenedores, cargas) y **alertas de frío activas** (últimas horas) para el jefe de planta.
+KPIs del día (sellos ECC, lecturas/rupturas de frío, contenedores, cargas), **alertas de frío activas** y **PDF del turno**.
 
-### Avisos WhatsApp / email
-Opcional vía secrets `[avisos]`: al registrar ruptura de frío se notifica por correo SMTP y/o WhatsApp (CallMeBot o Twilio), con cooldown anti-spam.
+### Mapeo de columnas y roles
+Si el Excel no trae LOTE/PESO/CALIBRE con esos nombres, se mapean en Resumen. Roles `supervisor` / `operario` en secrets (congelar lote solo supervisor).
+
+### Avisos email (WhatsApp opcional)
+Opcional vía secrets `[avisos]`: al registrar ruptura de frío se notifica por correo SMTP; WhatsApp (CallMeBot/Twilio) cuando lo configure.
 
 ### Seguridad (cortafuego)
 Login con bloqueo, token de sesión, timeout, validación de uploads y bitácora local.

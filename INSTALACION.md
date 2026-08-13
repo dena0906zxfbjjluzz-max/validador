@@ -103,19 +103,25 @@ Abra el navegador en la URL que muestre la terminal (suele ser `http://localhost
 
 ### Primera operación de prueba
 
-1. Login con `usuario` / `clave` de secrets.
+1. Login con `usuario` / `clave` de secrets (`rol = "supervisor"` o cuenta `[credenciales_operario]`).
 2. Cargue [`demo/packing_demo.csv`](demo/packing_demo.csv).
-3. Pruebe Módulo 1 (peso / SSCC), 2 (LMR), 3 (caja), 4 (frío).
-4. Sello ECC al generar reporte; ver panel derecho **Criptografía** (modo `real` si hay `LLAVE_PRIVADA`).
-5. Barra lateral: **Verificación pública ECC** con un PDF firmado.
-6. **Dashboard** → KPIs del turno; registre frío fuera de rango para probar alertas.
+3. Si faltan LOTE/PESO/CALIBRE: **Mapear columnas del packing** en Resumen.
+4. Pruebe módulos (peso / LMR / caja / frío). Congelar lote solo con rol supervisor.
+5. Sello ECC al generar reporte; **Verificación pública ECC** con un PDF firmado.
+6. **Dashboard** → KPIs del turno + **Descargar PDF del turno**; pruebe alertas de frío.
 
-### Avisos WhatsApp / correo (opcional)
+### Roles (opcional)
+
+- `[credenciales]` con `rol = "supervisor"` (por defecto).
+- `[credenciales_operario]` para línea: puede operar el lote, no congelar/descongelar ni reenviar avisos.
+- Alternativa: lista `[[usuarios]]` (ver `.streamlit/secrets.toml.example`).
+
+### Avisos correo (WhatsApp opcional / otro día)
 
 En Streamlit Secrets agregue bloque `[avisos]` (ver `.streamlit/secrets.toml.example`):
 
-- **Email:** `email_to`, `smtp_user`, `smtp_pass` (Gmail: contraseña de aplicación).
-- **WhatsApp:** `whatsapp_to` + `callmebot_apikey` (CallMeBot) **o** Twilio (`twilio_sid`, `twilio_token`, `twilio_from`).
+- **Email:** `email_to`, `smtp_host`, `smtp_user`, `smtp_pass` (Gmail: contraseña de aplicación).
+- **WhatsApp:** `whatsapp_to` + `callmebot_apikey` (CallMeBot) **o** Twilio — configurar cuando lo necesite.
 
 Al registrar una **ruptura de frío**, el Validador intenta avisar (máx. 1 aviso / cámara / 30 min).
 

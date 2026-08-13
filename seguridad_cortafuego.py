@@ -430,6 +430,7 @@ def intentar_login(
             "mensaje": "✅ Acceso concedido · sesión protegida por cortafuego.",
             "intentos": 0,
             "max": politica()["max_intentos"],
+            "rol": None,
         }
 
     info = registrar_fallo_login(session_state, usuario_in)
@@ -444,6 +445,7 @@ def intentar_login(
             ),
             "intentos": info["intentos"],
             "max": info["max"],
+            "rol": None,
         }
 
     resto = info["max"] - info["intentos"]
@@ -457,7 +459,104 @@ def intentar_login(
         ),
         "intentos": info["intentos"],
         "max": info["max"],
+        "rol": None,
     }
+
+
+def intentar_login_lista(
+    session_state: Any,
+    usuario_in: str,
+    clave_in: str,
+    candidatos: list[dict],
+) -> dict:
+    """
+    Login contra varios usuarios de planta.
+    cada candidato: {usuario, clave, rol} con rol 'operario' | 'supervisor'.
+    """
+    _init_state(session_state)
+    bloqueado, segs = estado_bloqueo(session_state)
+    if bloqueado:
+        return {
+            "ok": False,
+            "bloqueado": True,
+            "segundos_bloqueo": segs,
+            "mensaje": (
+                f"🔒 Cortafuego: acceso temporalmente bloqueado. "
+                f"Reintente en {segs // 60}m {segs % 60}s."
+            ),
+            "intentos": 0,
+            "max": politica()["max_intentos"],
+            "rol": None,
+        }
+
+    usuario_in = sanitizar_texto(usuario_in, 120)
+    clave_in = (clave_in or "").replace("\x00", "")[:256]
+    if not usuario_in or not clave_in:
+        return {
+            "ok": False,
+            "bloqueado": False,
+            "segundos_bloqueo": 0,
+            "mensaje": "Indique usuario y contraseña.",
+            "intentos": 0,
+            "max": politica()["max_intentos"],
+            "rol": None,
+        }
+
+    for cand in candidatos or []:
+        u_ok = str(cand.get("usuario") or "").strip()
+        c_ok = str(cand.get("clave") or "")
+        rol = normalizar_rol(cand.get("rol"))
+        if u_ok and credenciales_validas(usuario_in, clave_in, u_ok, c_ok):
+            registrar_login_ok(session_state, usuario_in)
+            session_state["rol_planta"] = rol
+            return {
+                "ok": True,
+                "bloqueado": False,
+                "segundos_bloqueo": 0,
+                "mensaje": f"✅ Acceso concedido · rol {rol}.",
+                "intentos": 0,
+                "max": politica()["max_intentos"],
+                "rol": rol,
+            }
+
+    info = registrar_fallo_login(session_state, usuario_in)
+    if info["bloqueado"]:
+        return {
+            "ok": False,
+            "bloqueado": True,
+            "segundos_bloqueo": info["segundos"],
+            "mensaje": (
+                f"🚨 Cortafuego: demasiados intentos fallidos. "
+                f"Bloqueo {info['segundos'] // 60} minutos."
+            ),
+            "intentos": info["intentos"],
+            "max": info["max"],
+            "rol": None,
+        }
+    resto = info["max"] - info["intentos"]
+    return {
+        "ok": False,
+        "bloqueado": False,
+        "segundos_bloqueo": 0,
+        "mensaje": (
+            f"Usuario o contraseña incorrectos. "
+            f"Intentos restantes: {resto} (antes del bloqueo)."
+        ),
+        "intentos": info["intentos"],
+        "max": info["max"],
+        "rol": None,
+    }
+
+
+def normalizar_rol(rol: Any) -> str:
+    r = str(rol or "supervisor").strip().lower()
+    if r in ("operario", "operador", "op", "linea", "línea"):
+        return "operario"
+    return "supervisor"
+
+
+def es_supervisor(session_state: Any) -> bool:
+    return normalizar_rol(session_state.get("rol_planta")) == "supervisor"
 
 
 def resumen_panel(session_state: Any) -> dict:
