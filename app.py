@@ -65,6 +65,14 @@ def cargar_credenciales_acceso() -> tuple[str | None, str | None, str | None]:
         )
 
 
+
+def pagina_ecc_style(titulo: str, descripcion: str = ""):
+    """Título limpio; descripción corta opcional (máx. una línea)."""
+    st.title(titulo)
+    if descripcion:
+        st.caption(descripcion)
+
+
 if "autenticado" not in st.session_state:
     st.session_state["autenticado"] = False
 
@@ -813,16 +821,6 @@ modo_app = st.sidebar.radio(
     index=0,
     key="nav_modo_app",
 )
-st.sidebar.markdown(
-    """
-    <div style="margin-top:1rem;padding-top:0.85rem;border-top:1px solid #1A2636;">
-      <span style="font-size:0.7rem;letter-spacing:0.08em;text-transform:uppercase;color:#8A9BB0;font-weight:700;">Estado</span>
-      <p style="margin:0.4rem 0 0 0;font-size:0.82rem;color:#2BB8A8;font-weight:700;">● Tema Cadena de Frío</p>
-      <p style="margin:0.2rem 0 0 0;font-size:0.72rem;color:#8A9BB0;">Teal reefer · sello oro export</p>
-    </div>
-    """,
-    unsafe_allow_html=True,
-)
 
 # Cortafuego: cerrar sesión (solo si autenticado)
 if st.session_state.get("autenticado"):
@@ -935,8 +933,7 @@ if modo_app == "Verificación pública ECC":
 # ---------- ACCESO PLANTA ----------
 if not st.session_state["autenticado"]:
     st.title("Acceso restringido - Control de Calidad")
-    st.write("Introduzca sus credenciales para ingresar a la plataforma corporativa.")
-    st.info("¿Solo necesita validar un PDF? Use en la barra lateral: **Verificación pública ECC**.")
+    st.caption("Credenciales de planta. Para PDF use Verificación pública ECC.")
 
     usuario_correcto, password_correcto, error_creds = cargar_credenciales_acceso()
     if error_creds:
@@ -971,10 +968,7 @@ if not st.session_state["autenticado"]:
             st.error(resultado_login.get("mensaje") or "Credenciales incorrectas.")
             if resultado_login.get("bloqueado"):
                 st.rerun()
-    st.caption(
-        "🛡️ Cortafuego: comparación segura de secretos · bloqueo tras intentos fallidos · "
-        f"límite {firewall.politica()['max_intentos']} intentos."
-    )
+    st.caption(f"Cortafuego · máx. {firewall.politica()['max_intentos']} intentos")
     st.stop()
 
 # Sesión autenticada: validar token + timeout en cada rerun
@@ -1085,19 +1079,7 @@ def render_modulo_alertas_tendencias(
     key_prefix: str = "m7",
 ):
     """Módulo 7 — Alertas y tendencias (frío SQLite + packing cargado)."""
-    st.markdown("---")
-    with st.container(border=True):
-        st.markdown(
-            '<p class="sb-card-title">Inteligencia operativa</p>'
-            '<p class="sb-card-heading">Módulo 7 — Alertas y tendencias</p>',
-            unsafe_allow_html=True,
-        )
-        st.caption(
-            "Reglas de planta + detección de anomalías (z-score) sobre cadena de frío "
-            "y el packing cargado. Sirve para anticipar rupturas, pesos atípicos y "
-            "patrones LMR por productor — sin modelos externos."
-        )
-
+    with st.container():
         informe = funciones.consolidar_inteligencia_planta(
             df_packing=df_packing,
             cols_mapa=cols_mapa,
@@ -1118,70 +1100,33 @@ def render_modulo_alertas_tendencias(
 
         veredicto = informe.get("veredicto")
         if veredicto == "ACCION_REQUERIDA":
-            st.error(f"🚨 **{veredicto}** — {informe.get('veredicto_ui')}")
+            st.error(veredicto)
         elif veredicto == "VIGILANCIA":
-            st.warning(f"🟡 **{veredicto}** — {informe.get('veredicto_ui')}")
+            st.warning(veredicto)
         else:
-            st.success(f"✅ **{veredicto}** — {informe.get('veredicto_ui')}")
+            st.success(veredicto)
 
-        alertas = informe.get("alertas") or []
+        alertas = [a for a in (informe.get("alertas") or []) if a.get("severidad") != "info"]
         if alertas:
-            with st.expander(f"Detalle de alertas ({len(alertas)})", expanded=cont.get("criticas", 0) > 0):
-                for a in alertas:
-                    sev = a.get("severidad")
-                    linea = f"**[{a.get('origen', '').upper()}]** {a.get('titulo')} — {a.get('detalle')}"
-                    if a.get("metrica"):
-                        linea += f" · `{a.get('metrica')}`"
-                    if sev == "critica":
-                        st.error(linea)
-                    elif sev == "advertencia":
-                        st.warning(linea)
-                    else:
-                        st.info(linea)
+            with st.expander(f"Alertas ({len(alertas)})", expanded=False):
+                for a in alertas[:12]:
+                    st.write(f"{a.get('titulo')} — {a.get('detalle')}")
 
-        col_a, col_b = st.columns(2)
-        with col_a:
-            st.markdown("**Cadena de frío por cámara**")
-            por_cam = (informe.get("frio") or {}).get("por_camara") or []
+        por_cam = (informe.get("frio") or {}).get("por_camara") or []
+        packing = informe.get("packing") or {}
+        with st.expander("Detalle frío / packing", expanded=False):
             if por_cam:
                 st.dataframe(pd.DataFrame(por_cam), width="stretch", hide_index=True)
-            else:
-                st.caption("Sin lecturas en SQLite todavía.")
-
+            prod = packing.get("por_productor") or []
+            if prod:
+                st.dataframe(pd.DataFrame(prod), width="stretch", hide_index=True)
             serie = (informe.get("frio") or {}).get("serie_chart")
             if isinstance(serie, pd.DataFrame) and not serie.empty and "camara" in serie.columns:
                 cams = sorted(serie["camara"].astype(str).unique().tolist())
-                cam_sel = st.selectbox(
-                    "Gráfico de temperatura:",
-                    options=cams,
-                    key=f"{key_prefix}_cam_chart",
-                )
+                cam_sel = st.selectbox("Cámara", options=cams, key=f"{key_prefix}_cam_chart")
                 sub = serie[serie["camara"].astype(str) == str(cam_sel)]
                 if not sub.empty and "etiqueta" in sub.columns:
-                    chart_df = sub.set_index("etiqueta")[["temperatura"]]
-                    st.line_chart(chart_df)
-
-        with col_b:
-            st.markdown("**Patrones de packing / LMR**")
-            packing = informe.get("packing") or {}
-            if packing.get("sin_datos"):
-                st.caption(packing.get("resumen") or "Cargue un packing para ver patrones.")
-            else:
-                stats = packing.get("stats_peso") or {}
-                if stats:
-                    st.info(
-                        f"Peso medio **{stats.get('media', 'N/D')} kg** · "
-                        f"σ **{stats.get('std', 'N/D')}** · "
-                        f"bajo mínimo **{stats.get('bajo_minimo', 0)}** · "
-                        f"outliers z **{stats.get('outliers_z', 0)}**"
-                    )
-                prod = packing.get("por_productor") or []
-                if prod:
-                    st.caption("Riesgo LMR por productor (alerta + rechazo)")
-                    st.dataframe(pd.DataFrame(prod), width="stretch", hide_index=True)
-                else:
-                    st.caption("Sin columna LMR/productor detectable en el archivo.")
-                st.caption(packing.get("resumen") or "")
+                    st.line_chart(sub.set_index("etiqueta")[["temperatura"]])
 
 
 
@@ -1205,23 +1150,6 @@ _mapa_vista = {
     "Alertas": "alertas",
 }
 _rev_vista = {v: k for k, v in _mapa_vista.items()}
-_vista_actual = st.session_state.get("vista_planta", "inicio")
-if _vista_actual == "operacion" and not _tiene_lote:
-    _vista_actual = "inicio"
-    st.session_state["vista_planta"] = "inicio"
-_label_vista = _rev_vista.get(_vista_actual, "Inicio")
-if _label_vista not in _opciones_vista:
-    _label_vista = "Inicio"
-
-_sel_vista = st.sidebar.radio(
-    "Pantalla",
-    _opciones_vista,
-    index=_opciones_vista.index(_label_vista),
-    key="nav_vista_planta_ui",
-)
-st.session_state["vista_planta"] = _mapa_vista[_sel_vista]
-vista = st.session_state["vista_planta"]
-
 _MODULOS_OP = [
     "Resumen del lote",
     "1 · Balanza / SSCC",
@@ -1231,19 +1159,63 @@ _MODULOS_OP = [
     "7 · Alertas y tendencias",
     "Limpieza y cierre",
 ]
+
+
+def ir_a_pantalla(vista_id: str, modulo: str | None = None):
+    """Cambia de pantalla sin tocar keys de widgets ya creados (evita error Streamlit)."""
+    st.session_state["vista_planta"] = vista_id
+    if modulo is not None:
+        st.session_state["modulo_nav"] = modulo
+    st.session_state["_sync_nav"] = True
+
+
+# Sincronizar radios ANTES de instanciarlos (upload / botones del turno anterior)
+if st.session_state.pop("_sync_nav", False):
+    _lab = _rev_vista.get(st.session_state.get("vista_planta", "inicio"), "Inicio")
+    if _lab not in _opciones_vista:
+        _lab = "Inicio"
+        st.session_state["vista_planta"] = "inicio"
+    # Borrar keys de widgets y recrear valor (evita StreamlitAPIException)
+    st.session_state.pop("nav_vista_planta_ui", None)
+    st.session_state.pop("nav_modulo_lote_ui", None)
+    st.session_state["nav_vista_planta_ui"] = _lab
+    _mod = st.session_state.get("modulo_nav", "Resumen del lote")
+    if _mod not in _MODULOS_OP:
+        _mod = "Resumen del lote"
+        st.session_state["modulo_nav"] = _mod
+    st.session_state["nav_modulo_lote_ui"] = _mod
+
+_vista_actual = st.session_state.get("vista_planta", "inicio")
+if _vista_actual == "operacion" and not _tiene_lote:
+    _vista_actual = "inicio"
+    st.session_state["vista_planta"] = "inicio"
+_label_vista = _rev_vista.get(_vista_actual, "Inicio")
+if _label_vista not in _opciones_vista:
+    _label_vista = "Inicio"
+if st.session_state.get("nav_vista_planta_ui") not in _opciones_vista:
+    st.session_state["nav_vista_planta_ui"] = _label_vista
+
+_sel_vista = st.sidebar.radio(
+    "Pantalla",
+    _opciones_vista,
+    key="nav_vista_planta_ui",
+)
+st.session_state["vista_planta"] = _mapa_vista[_sel_vista]
+vista = st.session_state["vista_planta"]
+
 if vista == "operacion":
     _mod_cur = st.session_state.get("modulo_nav", "Resumen del lote")
     if _mod_cur not in _MODULOS_OP:
         _mod_cur = "Resumen del lote"
+    if st.session_state.get("nav_modulo_lote_ui") not in _MODULOS_OP:
+        st.session_state["nav_modulo_lote_ui"] = _mod_cur
     st.session_state["modulo_nav"] = st.sidebar.radio(
         "Módulo del lote",
         _MODULOS_OP,
-        index=_MODULOS_OP.index(_mod_cur),
         key="nav_modulo_lote_ui",
     )
     if st.sidebar.button("← Volver al inicio", key="btn_volver_inicio"):
-        st.session_state["vista_planta"] = "inicio"
-        st.session_state["nav_vista_planta_ui"] = "Inicio"
+        ir_a_pantalla("inicio")
         st.rerun()
 
 with st.sidebar.expander("Parámetros de planta", expanded=(vista == "inicio")):
@@ -1306,9 +1278,7 @@ archivo = st.sidebar.file_uploader(
     type=["xlsx", "csv"],
     key="uploader_recepcion_empaque",
 )
-st.sidebar.caption(
-    f"Máx. {firewall.politica()['max_upload_bytes'] // (1024 * 1024)} MB · al cargar abre el panel del lote"
-)
+st.sidebar.caption("Al cargar abre el panel del lote")
 
 if archivo is not None:
     try:
@@ -1329,10 +1299,7 @@ if archivo is not None:
                 st.session_state["df_trabajo"] = funciones.cargar_datos_archivo(archivo)
                 st.session_state["lote_congelado"] = False
                 st.session_state["nombre_archivo"] = archivo.name
-                st.session_state["vista_planta"] = "operacion"
-                st.session_state["nav_vista_planta_ui"] = "Operación del lote"
-                st.session_state["modulo_nav"] = "Resumen del lote"
-                st.session_state["nav_modulo_lote_ui"] = "Resumen del lote"
+                ir_a_pantalla("operacion", "Resumen del lote")
                 firewall.registrar_evento(
                     "UPLOAD_OK",
                     f"Archivo {archivo.name} ({archivo.size} bytes)",
@@ -1347,111 +1314,51 @@ if archivo is not None:
 vista = st.session_state.get("vista_planta", "inicio")
 modulo_nav = st.session_state.get("modulo_nav", "Resumen del lote")
 
-if vista == "inicio":
-    st.markdown(
-        f"""
-        <div class="vx-workspace-hero">
-          <h1>{_plant_label}</h1>
-          <p>Suite de planta · calidad, trazabilidad y packing. Cargue el lote en la barra lateral para entrar al panel operativo — un módulo a la vez.</p>
-          <div class="vx-chip-row">
-            <span class="vx-chip">Cadena de frío</span>
-            <span class="vx-chip">LMR / SENASA</span>
-            <span class="vx-chip gold">Sello Ed25519</span>
-            <span class="vx-chip">{_fecha_hoy}</span>
-          </div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-else:
-    _titulos = {
-        "operacion": "Operación del lote",
-        "qr": "QR pallet",
-        "contenedores": "Contenedores y precintos",
-        "alertas": "Alertas y tendencias",
-    }
-    st.markdown(
-        f"""
-        <div class="vx-workspace-hero" style="padding:1rem 1.25rem;">
-          <h1 style="font-size:1.25rem;">{_plant_label} · {_titulos.get(vista, 'Planta')}</h1>
-          <p>Navegue desde la barra lateral · {_fecha_hoy}</p>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
 
-# ─── Pantalla Inicio (tarjetas de acceso) ─────────────────────────────────────
+# ─── Pantalla Inicio (estilo limpio tipo verificación ECC) ────────────────────
 if vista == "inicio":
-    t1, t2, t3, t4 = st.columns(4)
-    with t1:
-        st.markdown("""
-        <div class="vx-tile"><p class="k">Recepción</p><p class="t">Cargar lote</p>
-        <p class="d">Cargador en la barra lateral. Al subir, abre el panel del lote.</p></div>
-        """, unsafe_allow_html=True)
-    with t2:
-        st.markdown("""
-        <div class="vx-tile"><p class="k">Módulo 6</p><p class="t">QR pallet</p>
-        <p class="d">Escaneo y verificación en historial_reportes.</p></div>
-        """, unsafe_allow_html=True)
-        if st.button("Abrir QR", key="tile_qr", use_container_width=True):
-            st.session_state["vista_planta"] = "qr"
-            st.session_state["nav_vista_planta_ui"] = "QR pallet"
+    pagina_ecc_style(_plant_label, "Cargue el packing en la barra lateral.")
+
+    c1, c2 = st.columns(2)
+    with c1:
+        if st.button("QR pallet", type="primary", key="tile_qr", use_container_width=True):
+            ir_a_pantalla("qr")
             st.rerun()
-    with t3:
-        st.markdown("""
-        <div class="vx-tile"><p class="k">Módulo 5</p><p class="t">Contenedores</p>
-        <p class="d">Bookings, reefer y precintos ISO 6346.</p></div>
-        """, unsafe_allow_html=True)
-        if st.button("Abrir contenedores", key="tile_cnt", use_container_width=True):
-            st.session_state["vista_planta"] = "contenedores"
-            st.session_state["nav_vista_planta_ui"] = "Contenedores"
+        if st.button("Contenedores", key="tile_cnt", use_container_width=True):
+            ir_a_pantalla("contenedores")
             st.rerun()
-    with t4:
-        st.markdown("""
-        <div class="vx-tile"><p class="k">Módulo 7</p><p class="t">Alertas</p>
-        <p class="d">Tendencias de frío y patrones del lote.</p></div>
-        """, unsafe_allow_html=True)
-        if st.button("Abrir alertas", key="tile_alertas", use_container_width=True):
-            st.session_state["vista_planta"] = "alertas"
-            st.session_state["nav_vista_planta_ui"] = "Alertas"
+    with c2:
+        if st.button("Alertas", key="tile_alertas", use_container_width=True):
+            ir_a_pantalla("alertas")
             st.rerun()
+        if st.session_state.get("df_trabajo") is not None:
+            if st.button("Panel del lote", type="primary", key="btn_ir_operacion", use_container_width=True):
+                ir_a_pantalla("operacion", "Resumen del lote")
+                st.rerun()
+
     if st.session_state.get("df_trabajo") is not None:
-        st.success(f"Lote en memoria: **{st.session_state.get('nombre_archivo', 'archivo')}**.")
-        if st.button("Ir al panel del lote", type="primary", key="btn_ir_operacion"):
-            st.session_state["vista_planta"] = "operacion"
-            st.session_state["nav_vista_planta_ui"] = "Operación del lote"
-            st.rerun()
+        st.success(f"Lote activo: **{st.session_state.get('nombre_archivo', 'archivo')}**")
 
 if vista == "qr":
     col_cen = st.container()
     with col_cen:
-        with st.container(border=True):
-            st.markdown(
-                '<p class="sb-card-title">Supabase · historial_reportes</p>'
-                '<p class="sb-card-heading">Módulo 6 — Escaneo QR del pallet</p>',
-                unsafe_allow_html=True,
-            )
-            st.caption(
-                "Active el escáner solo cuando lo necesite. Tras capturar el QR y consultar Supabase, "
-                "la cámara se apaga sola para liberar el lente del celular."
-            )
+        pagina_ecc_style("Escaneo QR del pallet", "Verifica el pallet en historial_reportes.")
+        with st.container():
 
             if not st.session_state["camara_qr_activa"]:
-                st.info("Lente apagado. Pulse el botón verde para activar el escáner.")
                 if st.button(
-                    "📷 Activar Escáner QR",
+                    "Activar escáner QR",
                     type="primary",
                     key="btn_activar_escaner_qr",
                 ):
                     st.session_state["camara_qr_activa"] = True
                     st.rerun()
             else:
-                st.caption("Escáner activo — apunte al QR y use el disparador de la cámara.")
                 foto_qr = st.camera_input(
-                    "Cámara web / celular — apunte al código QR del pallet",
+                    "Cámara QR",
                     key=f"camera_escaneo_qr_{st.session_state['camera_qr_token']}",
                 )
-                if st.button("🛑 Apagar cámara", key="btn_apagar_camara_qr"):
+                if st.button("Apagar cámara", key="btn_apagar_camara_qr"):
                     _apagar_camara_qr()
                     st.rerun()
 
@@ -1470,52 +1377,46 @@ if vista == "qr":
                     st.rerun()
 
             st.markdown("---")
-            # Respaldo fuera de expander anidado problemático (íconos/upload)
-            st.markdown(
-                '<p class="sb-card-title">Sin cámara</p>'
-                '<p class="sb-card-heading" style="font-size:0.95rem;margin-bottom:0.5rem;">'
-                "Validación manual / foto del QR</p>",
-                unsafe_allow_html=True,
-            )
-            img_qr_upload = st.file_uploader(
-                "Subir foto del QR",
-                type=["png", "jpg", "jpeg", "webp"],
-                key="upload_foto_qr_pallet",
-            )
-            texto_qr_manual = st.text_area(
-                "Texto del QR (JSON / hash / lote|hash)",
-                height=90,
-                key="texto_manual_qr_pallet",
-                placeholder='{"lote":"L-001","hash_sha256":"abc...64 hex"}',
-            )
-            if st.button("Validar respaldo en Supabase", key="btn_validar_qr_respaldo"):
-                imagen_bytes = img_qr_upload.getvalue() if img_qr_upload is not None else None
-                try:
-                    if imagen_bytes is not None and img_qr_upload is not None:
-                        _ok_img, _msg_img = firewall.validar_upload_bytes(
-                            img_qr_upload.name, imagen_bytes
-                        )
-                        if not _ok_img:
-                            st.error(f"🛡️ Cortafuego: {_msg_img}")
-                            resultado_qr = None
+            with st.expander("Validación manual / foto del QR (si no usa cámara)"):
+                img_qr_upload = st.file_uploader(
+                    "Subir foto del QR",
+                    type=["png", "jpg", "jpeg", "webp"],
+                    key="upload_foto_qr_pallet",
+                )
+                texto_qr_manual = st.text_area(
+                    "Texto del QR (JSON / hash / lote|hash)",
+                    height=90,
+                    key="texto_manual_qr_pallet",
+                    placeholder='{"lote":"L-001","hash_sha256":"abc...64 hex"}',
+                )
+                if st.button("Validar respaldo en Supabase", key="btn_validar_qr_respaldo"):
+                    imagen_bytes = img_qr_upload.getvalue() if img_qr_upload is not None else None
+                    try:
+                        if imagen_bytes is not None and img_qr_upload is not None:
+                            _ok_img, _msg_img = firewall.validar_upload_bytes(
+                                img_qr_upload.name, imagen_bytes
+                            )
+                            if not _ok_img:
+                                st.error(f"🛡️ Cortafuego: {_msg_img}")
+                                resultado_qr = None
+                            else:
+                                resultado_qr = funciones.procesar_escaneo_qr_camara(imagen_bytes)
+                        elif texto_qr_manual and texto_qr_manual.strip():
+                            _ok_txt, _txt_o_err = firewall.validar_entrada_operativa(
+                                texto_qr_manual.strip()
+                            )
+                            if not _ok_txt:
+                                st.error(f"🛡️ Cortafuego: {_txt_o_err}")
+                                resultado_qr = None
+                            else:
+                                resultado_qr = funciones.validar_pallet_por_qr(texto_qr=_txt_o_err)
                         else:
-                            resultado_qr = funciones.procesar_escaneo_qr_camara(imagen_bytes)
-                    elif texto_qr_manual and texto_qr_manual.strip():
-                        _ok_txt, _txt_o_err = firewall.validar_entrada_operativa(
-                            texto_qr_manual.strip()
-                        )
-                        if not _ok_txt:
-                            st.error(f"🛡️ Cortafuego: {_txt_o_err}")
+                            st.warning("Suba una imagen o pegue el texto del QR.")
                             resultado_qr = None
-                        else:
-                            resultado_qr = funciones.validar_pallet_por_qr(texto_qr=_txt_o_err)
-                    else:
-                        st.warning("Suba una imagen o pegue el texto del QR.")
-                        resultado_qr = None
-                    if resultado_qr is not None:
-                        st.session_state["ultimo_resultado_qr"] = resultado_qr
-                except Exception as e:
-                    st.error(f"Error en escaneo QR: {e}")
+                        if resultado_qr is not None:
+                            st.session_state["ultimo_resultado_qr"] = resultado_qr
+                    except Exception as e:
+                        st.error(f"Error en escaneo QR: {e}")
 
             resultado_qr_ui = st.session_state.get("ultimo_resultado_qr")
             if resultado_qr_ui:
@@ -1550,6 +1451,8 @@ if vista == "qr":
                             st.json(sb_qr.get("filas"))
 
 if vista == "inicio":
+    st.markdown("---")
+    st.subheader("Servicios de planta")
     col_der = st.container()
     with col_der:
         if "panel_der" not in st.session_state:
@@ -1569,25 +1472,16 @@ if vista == "inicio":
             ("ecc", "Criptografía", "nav_der_ecc"),
         )
 
-        with st.container(border=True):
-            st.markdown(
-                '<p class="sb-card-title">Servicios</p>'
-                '<p class="sb-card-heading">Atajos de planta</p>'
-                '<p class="sb-side-nav-hint">Menú · un clic · 4 paneles</p>',
-                unsafe_allow_html=True,
-            )
-
-            _p = st.session_state.get("panel_der")
-            for _pid, _label, _key in _ATAJOS_DER:
-                if st.button(
-                    _label,
-                    key=_key,
-                    type="primary" if _p == _pid else "secondary",
-                    use_container_width=True,
-                ):
-                    _abrir_panel_der(_pid)
-                    st.rerun()
-            st.caption("Cada botón abre su propio panel. Pulse el mismo para cerrar.")
+        _p = st.session_state.get("panel_der")
+        for _pid, _label, _key in _ATAJOS_DER:
+            if st.button(
+                _label,
+                key=_key,
+                type="primary" if _p == _pid else "secondary",
+                use_container_width=True,
+            ):
+                _abrir_panel_der(_pid)
+                st.rerun()
 
         # —— Panel: Base de datos (solo DB / KPI) ——
         if st.session_state.get("panel_der") == "db":
@@ -1804,40 +1698,23 @@ if vista == "inicio":
                             )
 
 if vista == "contenedores":
-    # ─── Módulo 5: Contenedores (siempre visible, UX igual a Módulo 6) ────────────
-    st.markdown("---")
-    with st.container(border=True):
-        st.markdown(
-            '<p class="sb-card-title">Aduanas · Reefer · Precintos</p>'
-            '<p class="sb-card-heading">Módulo 5 — Contenedores, bookings y precintos</p>',
-            unsafe_allow_html=True,
-        )
-        st.caption(
-            "Escanee el QR del contenedor (o escriba booking / ISO 6346). "
-            "Si no está en la base, use el formulario guiado y selle en un clic. "
-            "Cámara apagada por defecto (misma lógica que el Módulo 6)."
-        )
+    pagina_ecc_style("Contenedores y precintos", "Booking · ISO 6346 · precintos.")
+    with st.container():
 
         col_c_scan, col_c_form = st.columns([1, 1])
 
         with col_c_scan:
-            st.markdown(
-                '<p class="sb-card-title">Escaneo rápido</p>',
-                unsafe_allow_html=True,
-            )
             if not st.session_state["camara_cnt_activa"]:
-                st.info("Lente apagado. Active el escáner solo para leer el QR del reefer.")
                 if st.button(
-                    "Activar escáner de contenedor",
+                    "Activar escáner",
                     type="primary",
                     key="btn_activar_escaner_cnt",
                 ):
                     st.session_state["camara_cnt_activa"] = True
                     st.rerun()
             else:
-                st.caption("Escáner activo — apunte al QR del contenedor / booking.")
                 foto_cnt = st.camera_input(
-                    "Cámara — QR de contenedor o booking",
+                    "Cámara contenedor",
                     key=f"camera_escaneo_cnt_{st.session_state['camera_cnt_token']}",
                 )
                 if st.button("Apagar cámara", key="btn_apagar_camara_cnt"):
@@ -1865,10 +1742,9 @@ if vista == "contenedores":
                     st.rerun()
 
             st.markdown("---")
-            st.caption("O sin cámara")
             texto_cnt = st.text_input(
-                "Booking o contenedor (ISO / texto QR):",
-                placeholder="TGBU1234567  ·  BKG-998  ·  JSON",
+                "Booking o contenedor",
+                placeholder="TGBU1234567 · BKG-998",
                 key="cnt_lookup_manual",
             )
             if st.button("Buscar contenedor", key="btn_cnt_lookup"):
@@ -1901,10 +1777,6 @@ if vista == "contenedores":
                     )
 
         with col_c_form:
-            st.markdown(
-                '<p class="sb-card-title">Registro guiado (1 clic)</p>',
-                unsafe_allow_html=True,
-            )
             booking_input = st.text_input(
                 "Booking *",
                 placeholder="BKG-998231",
@@ -1925,7 +1797,7 @@ if vista == "contenedores":
                 placeholder="SENASA-004821",
                 key="cnt_form_psenasa",
             )
-            st.caption(f"Destino (parámetros de planta): **{mercado_destino}**")
+            st.caption(f"Destino: {mercado_destino}")
 
             if st.button(
                 "Sellar y registrar contenedor",
@@ -1966,6 +1838,7 @@ if vista == "contenedores":
 
 # ─── Alertas (pantalla propia) ────────────────────────────────────────────────
 if vista == "alertas":
+    pagina_ecc_style("Alertas y tendencias", "Frío · pesos · LMR.")
     _df_al = st.session_state.get("df_trabajo")
     _cols_al = funciones.mapear_columnas_trazabilidad(_df_al) if _df_al is not None else None
     render_modulo_alertas_tendencias(
@@ -2035,49 +1908,34 @@ if vista == "operacion" and st.session_state.get("df_trabajo") is not None:
         }
         historial_db_data = st.session_state["kpi_archivo"]["historial"]
 
-        st.markdown(
-            f"""
-            <div class="vx-lote-bar">
-              <div>
-                <div class="name">{archivo.name}</div>
-                <div class="meta">{total_filas} registros · {total_columnas} columnas · confiabilidad {porcentaje_limpio}% · {estado_rust}</div>
-              </div>
-              <div class="meta">Módulo: <strong style="color:#2BB8A8">{modulo_nav}</strong></div>
-            </div>
-            """,
-            unsafe_allow_html=True,
+        pagina_ecc_style(
+            modulo_nav,
+            f"{archivo.name} · {total_filas} filas · {porcentaje_limpio}% limpio",
         )
 
 
         if modulo_nav == "Resumen del lote":
-            st.markdown("### Panel del lote")
-            st.caption("Elija un módulo en la barra lateral para trabajar. Aquí solo el panorama del archivo.")
             c1, c2, c3, c4 = st.columns(4)
             c1.metric("Filas", total_filas)
             c2.metric("Columnas", total_columnas)
             c3.metric("Duplicados", total_duplicados)
             c4.metric("Confiabilidad", f"{porcentaje_limpio}%")
-            with st.expander("Vista previa (primeras 30 filas)", expanded=True):
+            with st.expander("Vista previa", expanded=False):
                 st.dataframe(df_original.head(30), width="stretch", hide_index=True)
-            if st.button("Ir a Alertas y tendencias", key="btn_resumen_a_m7"):
-                st.session_state["modulo_nav"] = "7 · Alertas y tendencias"
-                st.session_state["nav_modulo_lote_ui"] = "7 · Alertas y tendencias"
+            if st.button("Alertas", key="btn_resumen_a_m7"):
+                ir_a_pantalla("operacion", "7 · Alertas y tendencias")
                 st.rerun()
-            if st.button("Ir a Limpieza y cierre", key="btn_resumen_a_cierre"):
-                st.session_state["modulo_nav"] = "Limpieza y cierre"
-                st.session_state["nav_modulo_lote_ui"] = "Limpieza y cierre"
+            if st.button("Cierre", key="btn_resumen_a_cierre"):
+                ir_a_pantalla("operacion", "Limpieza y cierre")
                 st.rerun()
 
 
         if modulo_nav == "1 · Balanza / SSCC":
             # MÓDULO 1
-            st.markdown("---")
-            st.markdown("### 🔌 Módulo 1: Conexión de Balanza y Lectura Rápida de Pallets (SSCC)")
             col_b1, col_b2 = st.columns(2)
             with col_b1:
-                st.info("⚡ **Balanza en línea:** el peso se escribe en la última fila de la columna PESO del archivo cargado.")
-                peso_capturado = st.number_input("Peso Neto capturado desde Balanza (kg):", value=4.5, step=0.1)
-                if st.button("📥 Registrar Peso en Última Fila"):
+                peso_capturado = st.number_input("Peso neto (kg)", value=4.5, step=0.1)
+                if st.button("Registrar peso", type="primary"):
                     df_nuevo, ok_peso, col_peso_usada = funciones.registrar_peso_ultima_fila(df_original, peso_capturado)
                     if ok_peso:
                         st.session_state["df_trabajo"] = df_nuevo
@@ -2095,8 +1953,7 @@ if vista == "operacion" and st.session_state.get("df_trabajo") is not None:
                     else:
                         st.error("No se encontró una columna de PESO en el archivo, o el archivo está vacío.")
             with col_b2:
-                st.info("🔫 **Lector GS1-128 / SSCC:** busca el código en el archivo cargado (CAJA, SSCC, PALLET, CODIGO, LOTE).")
-                sscc_input = st.text_input("Escanear Código SSCC o Caja:", placeholder="Ej: 077512345678901234")
+                sscc_input = st.text_input("SSCC / caja / pallet", placeholder="077512345678901234")
                 if sscc_input:
                     df_sscc = funciones.buscar_registros_por_codigo(df_original, sscc_input)
                     if df_sscc.empty:
@@ -2108,8 +1965,6 @@ if vista == "operacion" and st.session_state.get("df_trabajo") is not None:
 
         if modulo_nav == "2 · LMR / SENASA":
             # MÓDULO 2
-            st.markdown("---")
-            st.markdown("### 🧪 Módulo 2: Control de Límites Máximos de Residuos (LMR) y Certificación SENASA")
             lotes_disponibles = []
             if cols_traza["lote"]:
                 lotes_disponibles = sorted(
@@ -2162,14 +2017,16 @@ if vista == "operacion" and st.session_state.get("df_trabajo") is not None:
                     else:
                         detalle_lmr = "Lote hallado, sin columna LMR; use el selector manual"
 
-                if estado_lmr == "conforme":
-                    st.success(f"🟢 **SENASA / Destino:** APROBADO — {detalle_lmr}")
-                elif estado_lmr == "alerta":
-                    st.warning(f"🟡 **SENASA / Destino:** EN CUARENTENA — {detalle_lmr}")
-                elif estado_lmr == "rechazado":
-                    st.error(f"🔴 **SENASA / Destino:** BLOQUEADO DE PLANTA — {detalle_lmr}")
-                else:
-                    st.info(f"ℹ️ **SENASA / Destino:** Sin veredicto automático — {detalle_lmr}")
+            if estado_lmr == "conforme":
+                st.success("APROBADO")
+            elif estado_lmr == "alerta":
+                st.warning("EN CUARENTENA")
+            elif estado_lmr == "rechazado":
+                st.error("BLOQUEADO")
+            else:
+                st.info("Sin veredicto")
+            if detalle_lmr:
+                st.caption(detalle_lmr)
 
             if lote_lmr_sel and not df_lote_lmr.empty:
                 with st.expander(f"Registros del lote `{lote_lmr_sel}` ({len(df_lote_lmr)})"):
@@ -2178,45 +2035,30 @@ if vista == "operacion" and st.session_state.get("df_trabajo") is not None:
 
         if modulo_nav == "3 · Trazabilidad":
             # MÓDULO 3
-            st.markdown("---")
-            st.markdown("### 🗺️ Módulo 3: Trazabilidad Inversa (De Caja o Pallet al Fundo de Origen)")
             col_inv1, col_inv2 = st.columns([2, 3])
             with col_inv1:
                 caja_busqueda_inversa = st.text_input(
-                    "🔍 Ingrese ID de Caja o Pallet para Trazabilidad Inversa:",
-                    placeholder="Ej: CJ-9842 / SSCC / LOTE",
+                    "Caja o pallet",
+                    placeholder="CJ-9842 / SSCC / LOTE",
                 )
                 cols_detectadas = [f"`{v}` ({k})" for k, v in cols_traza.items() if v]
-                if cols_detectadas:
-                    st.caption("Columnas detectadas: " + ", ".join(cols_detectadas[:8]))
-                else:
-                    st.caption("No se detectaron columnas típicas de trazabilidad; se buscará en todo el archivo.")
             with col_inv2:
                 if caja_busqueda_inversa:
                     df_traza = funciones.buscar_registros_por_codigo(df_original, caja_busqueda_inversa)
                     if df_traza.empty:
-                        st.error(
-                            f"No se encontró trazabilidad para `{caja_busqueda_inversa}`. "
-                            "Verifique que el ID exista en columnas CAJA, PALLET, SSCC, CODIGO o LOTE."
-                        )
+                        st.error("No encontrado")
                     else:
                         arbol = funciones.armar_arbol_trazabilidad(
                             df_traza.iloc[0], cols_traza, auditor_nombre, caja_busqueda_inversa
                         )
                         st.markdown(
                             f"""
-    **Árbol genealógico de trazabilidad para `{arbol['codigo']}`**
+**`{arbol['codigo']}`**
 
-    - **Fundo / Parcela:** {arbol['fundo']}
-    - **Productor registrado:** {arbol['productor']}
-    - **Lote de proceso:** {arbol['lote']}
-    - **Fecha de cosecha:** {arbol['cosecha']}
-    - **Turno / línea de packing:** {arbol['turno']}
-    - **Peso / Calibre:** {arbol['peso']} / {arbol['calibre']}
-    - **Estado LMR en archivo:** {arbol['lmr']}
-    - **Inspector responsable:** {arbol['inspector']}
-    - **Coincidencias:** {len(df_traza)} registro(s)
-    """
+- Fundo: {arbol['fundo']} · Productor: {arbol['productor']}
+- Lote: {arbol['lote']} · Turno: {arbol['turno']}
+- Cosecha: {arbol['cosecha']} · LMR: {arbol['lmr']}
+"""
                         )
                         if len(df_traza) > 1:
                             st.dataframe(df_traza, width="stretch", hide_index=True)
@@ -2224,17 +2066,12 @@ if vista == "operacion" and st.session_state.get("df_trabajo") is not None:
 
         if modulo_nav == "4 · Cadena de frío":
             # MÓDULO 4
-            st.markdown("---")
-            st.markdown("### 🌡️ Módulo 4: Control Térmico de Cadena de Frío (Pre-frío y Contenedores)")
             t_min_f, t_max_f = funciones.obtener_rango_frio_fruta(
                 producto_sel,
                 temp_min_override=temp_min_limite,
                 temp_max_override=temp_max_limite if producto_sel == "Personalizado" else temp_max_limite,
             )
-            st.caption(
-                f"Rango óptimo comercial para **{producto_sel}**: "
-                f"{t_min_f} °C a {t_max_f} °C"
-            )
+            st.caption(f"{producto_sel}: {t_min_f}–{t_max_f} °C")
 
             col_f1, col_f2, col_f3 = st.columns(3)
             with col_f1:
@@ -2286,17 +2123,17 @@ if vista == "operacion" and st.session_state.get("df_trabajo") is not None:
                             st.error(resultado_frio["mensaje_ui"])
 
                         if resultado_frio.get("sqlite_ok"):
-                            st.caption(resultado_frio.get("sqlite_msg", "Guardado en SQLite"))
+                            pass
                         else:
                             st.warning(resultado_frio.get("sqlite_msg", "Error SQLite"))
 
                         sb_f = resultado_frio.get("supabase") or {}
                         if sb_f.get("ok"):
-                            st.caption(f"☁️ Supabase control_frio: {sb_f.get('mensaje')}")
+                            pass
                         elif sb_f.get("configurado") is False:
-                            st.caption("☁️ Supabase no configurado (solo local).")
+                            pass
                         else:
-                            st.error(sb_f.get("mensaje") or "Error al enviar control_frio a Supabase")
+                            st.error(sb_f.get("mensaje") or "Error Supabase")
                     except Exception as e:
                         st.error(e)
 
@@ -2318,8 +2155,7 @@ if vista == "operacion" and st.session_state.get("df_trabajo") is not None:
 
 
         if modulo_nav == "Limpieza y cierre":
-            st.markdown("---")
-            st.markdown("### 1️⃣ Selección de Columnas para Exportar")
+            st.subheader("Columnas a exportar")
             todas_cols = list(df_original.columns)
 
             default_cols = [
@@ -2336,7 +2172,7 @@ if vista == "operacion" and st.session_state.get("df_trabajo") is not None:
 
             df_export = df_original[cols_elegidas].copy() if cols_elegidas else df_original.copy()
 
-            st.markdown("### 2️⃣ Limpieza, Auditoría y Reporte Exclusivo de Errores")
+            st.subheader("Limpieza, auditoría y errores")
             col_l1, col_l2, col_l3, col_l4 = st.columns([1, 1, 1, 1])
             with col_l1:
                 if not st.session_state["lote_congelado"]:
@@ -2379,8 +2215,7 @@ if vista == "operacion" and st.session_state.get("df_trabajo") is not None:
                 else:
                     st.success("¡Excelente! No hay registros con celdas vacías en este archivo.")
 
-            st.markdown("### 3️⃣ Control de Calidad, Estadísticas y Alertas")
-
+            st.subheader("Control de calidad y estadísticas")
             col_m1, col_m2, col_m3, col_m4 = st.columns(4)
             col_pallet_chk = [c for c in df_original.columns if "PALLET" in c.upper()]
             total_pallets = df_original[col_pallet_chk[0]].nunique() if col_pallet_chk else "N/D"
@@ -2406,7 +2241,7 @@ if vista == "operacion" and st.session_state.get("df_trabajo") is not None:
                 cajas_livianas = (pesos_num < peso_min_caja).sum()
                 peso_promedio = round(pesos_num.mean(), 2) if not pesos_num.empty else 0
                 peso_std = round(pesos_num.std(), 2) if not pesos_num.empty else 0
-                st.info(f"📊 **Estadística de Pesaje:** Peso Promedio del Lote: **{peso_promedio} kg** | Desviación Estándar: **{peso_std} kg**")
+                st.caption(f"Peso medio {peso_promedio} kg · σ {peso_std}")
 
                 if cajas_livianas > 0:
                     st.error(f"⚠️ **Alerta Crítica de Pesaje:** Se encontraron {cajas_livianas} registros por debajo del peso mínimo de {peso_min_caja} kg.")
@@ -2417,9 +2252,9 @@ if vista == "operacion" and st.session_state.get("df_trabajo") is not None:
                 if col_calibre:
                     conteo_calibres = df_original[col_calibre[0]].value_counts().reset_index()
                     conteo_calibres.columns = ["Calibre", "Cajas"]
-                    st.write("📊 **Distribución de Calibres (Tabla):**")
+                    st.caption("Calibres")
                     st.dataframe(conteo_calibres.T, use_container_width=True)
-                    st.write("📈 **Gráfico de Calibres:**")
+                    
                     st.bar_chart(conteo_calibres.set_index("Calibre"))
 
             with col2:
@@ -2435,7 +2270,7 @@ if vista == "operacion" and st.session_state.get("df_trabajo") is not None:
                         st.success(f"✅ **Merma Bajo Control:** {porcentaje_merma}% de descarte.")
 
             st.markdown("---")
-            st.markdown("### 🛡️ Módulo de Seguridad: Sello Criptográfico ECC del Lote")
+            st.subheader("Sello criptográfico ECC del lote")
             resumen_datos = f"Auditoría de Planta - Cultivo: {producto_sel} - Fecha: {datetime.date.today()} - Registros: {total_filas}"
 
             try:
@@ -2571,7 +2406,7 @@ if vista == "operacion" and st.session_state.get("df_trabajo") is not None:
                 st.error(f"No se pudo generar el sello criptográfico: {e}")
                 st.caption(f"Diagnóstico: {motor_planta.diagnostico()}")
 
-            st.markdown("### 4️⃣ Observaciones de Turno, Edición y Cierre")
+            st.subheader("Observaciones de turno, edición y cierre")
             col_bus1, col_bus2, col_bus3 = st.columns(3)
             with col_bus1:
                 texto_busqueda = st.text_input("🔍 Búsqueda Global (Lote/Contenedor):")
@@ -2614,7 +2449,6 @@ if vista == "operacion" and st.session_state.get("df_trabajo") is not None:
                 st.warning("🔒 **Lote Congelado:** La tabla está en modo solo lectura. Para editar, desbloquee el lote abajo.")
                 df_editado = df_mostrar
             else:
-                st.info("💡 **Nota de Planta:** Puedes escribir directamente en la columna `Observaciones_Rechazo` de la tabla si una caja presenta golpes, calibre fuera de rango u otra incidencia.")
                 df_editado_pag = st.data_editor(df_paginado, use_container_width=True, key="editor_datos_pag")
             
                 df_editado = df_mostrar.copy()
