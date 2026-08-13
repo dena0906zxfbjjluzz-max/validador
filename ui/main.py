@@ -235,19 +235,22 @@ def run() -> None:
             st.caption("El código vence en unos minutos. Revise spam si no llega.")
         else:
             if st.button("Ingresar", type="primary", key="btn_login_planta"):
+                # Primero validar sin abrir sesión; OTP solo si el rol es supervisor
                 resultado_login = firewall.intentar_login_lista(
                     st.session_state,
                     usuario_in=usuarioInput,
                     clave_in=passwordInput,
                     candidatos=accesos_planta,
-                    abrir_sesion=not _otp_on,
+                    abrir_sesion=False,
                 )
                 if resultado_login.get("ok"):
-                    if _otp_on:
+                    rol_ok = resultado_login.get("rol") or "supervisor"
+                    pedir_otp = firewall.otp_requerido_para_rol(rol_ok)
+                    if pedir_otp:
                         envio = firewall.iniciar_otp_pendiente(
                             st.session_state,
                             usuario=resultado_login.get("usuario") or usuarioInput,
-                            rol=resultado_login.get("rol") or "supervisor",
+                            rol=rol_ok,
                             planta=resultado_login.get("planta") or "",
                         )
                         if envio.get("ok"):
@@ -260,14 +263,25 @@ def run() -> None:
                                 "(`seguridad.otp_habilitado = false`)."
                             )
                     else:
-                        st.session_state["rol_planta"] = (
-                            resultado_login.get("rol") or "supervisor"
+                        # Operario (u OTP off): abrir sesión ya
+                        firewall.registrar_login_ok(
+                            st.session_state,
+                            resultado_login.get("usuario") or usuarioInput,
                         )
+                        st.session_state["rol_planta"] = rol_ok
                         if resultado_login.get("planta"):
                             st.session_state["nombre_planta_sesion"] = resultado_login[
                                 "planta"
                             ]
-                        st.success(resultado_login.get("mensaje") or "Acceso concedido.")
+                        st.success(
+                            f"✅ Acceso concedido · rol {rol_ok}"
+                            + (
+                                f" · {resultado_login.get('planta')}"
+                                if resultado_login.get("planta")
+                                else ""
+                            )
+                            + "."
+                        )
                         st.rerun()
                 else:
                     st.error(resultado_login.get("mensaje") or "Credenciales incorrectas.")
@@ -277,7 +291,7 @@ def run() -> None:
         if _nombres_p:
             st.caption("Plantas configuradas: " + " · ".join(_nombres_p))
         if _otp_on:
-            st.caption("OTP por correo activo · doble factor de acceso")
+            st.caption("OTP por correo: solo supervisor · operario entra con usuario/clave")
         else:
             st.caption("OTP desactivado o sin email SMTP configurado")
         st.caption(f"Cortafuego · máx. {firewall.politica()['max_intentos']} intentos")

@@ -604,6 +604,16 @@ def otp_esta_habilitado() -> bool:
         return False
 
 
+def otp_requerido_para_rol(rol: Any) -> bool:
+    """
+    Política planta: OTP solo para supervisor.
+    Operario entra con usuario/clave (sin código), si OTP global está activo.
+    """
+    if not otp_esta_habilitado():
+        return False
+    return normalizar_rol(rol) == "supervisor"
+
+
 def otp_email_destino() -> str:
     dest = _leer_secret_seguridad("otp_email", "")
     if dest:
