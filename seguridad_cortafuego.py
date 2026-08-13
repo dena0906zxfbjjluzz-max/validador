@@ -468,10 +468,13 @@ def intentar_login_lista(
     usuario_in: str,
     clave_in: str,
     candidatos: list[dict],
+    *,
+    abrir_sesion: bool = True,
 ) -> dict:
     """
     Login contra varios usuarios de planta.
     cada candidato: {usuario, clave, rol} con rol 'operario' | 'supervisor'.
+    Si abrir_sesion=False, solo valida (para flujo OTP).
     """
     _init_state(session_state)
     bloqueado, segs = estado_bloqueo(session_state)
@@ -507,24 +510,29 @@ def intentar_login_lista(
         c_ok = str(cand.get("clave") or "")
         rol = normalizar_rol(cand.get("rol"))
         if u_ok and credenciales_validas(usuario_in, clave_in, u_ok, c_ok):
-            registrar_login_ok(session_state, usuario_in)
-            session_state["rol_planta"] = rol
             planta = str(cand.get("planta") or "").strip()
-            if planta:
-                session_state["nombre_planta_sesion"] = planta
+            if abrir_sesion:
+                registrar_login_ok(session_state, usuario_in)
+                session_state["rol_planta"] = rol
+                if planta:
+                    session_state["nombre_planta_sesion"] = planta
+                mensaje = (
+                    f"✅ Acceso concedido · rol {rol}"
+                    + (f" · {planta}" if planta else "")
+                    + "."
+                )
+            else:
+                mensaje = "Credenciales válidas. Confirme el código OTP."
             return {
                 "ok": True,
                 "bloqueado": False,
                 "segundos_bloqueo": 0,
-                "mensaje": (
-                    f"✅ Acceso concedido · rol {rol}"
-                    + (f" · {planta}" if planta else "")
-                    + "."
-                ),
+                "mensaje": mensaje,
                 "intentos": 0,
                 "max": politica()["max_intentos"],
                 "rol": rol,
                 "planta": planta or None,
+                "usuario": usuario_in,
             }
 
     info = registrar_fallo_login(session_state, usuario_in)
@@ -553,6 +561,187 @@ def intentar_login_lista(
         "intentos": info["intentos"],
         "max": info["max"],
         "rol": None,
+    }
+
+
+def _leer_secret_seguridad(clave: str, default: str = "") -> str:
+    try:
+        import streamlit as st
+
+        for ruta in (("seguridad", clave), ("credenciales", clave), (clave,)):
+            cur = st.secrets
+            ok = True
+            for parte in ruta:
+                try:
+                    cur = cur[parte]
+                except Exception:
+                    ok = False
+                    break
+            if ok and str(cur).strip():
+                return str(cur).strip()
+    except Exception:
+        pass
+    return default
+
+
+def otp_esta_habilitado() -> bool:
+    """
+    OTP por correo:
+      [seguridad] otp_habilitado = "true" | "false" | "auto"
+    auto (default): activo si hay SMTP/email en [avisos].
+    """
+    flag = _leer_secret_seguridad("otp_habilitado", "auto").lower()
+    if flag in ("0", "false", "no", "off"):
+        return False
+    if flag in ("1", "true", "yes", "on", "si", "sí"):
+        return True
+    # auto
+    try:
+        from planta.avisos import _config_avisos
+
+        return bool(_config_avisos().get("email_ok"))
+    except Exception:
+        return False
+
+
+def otp_email_destino() -> str:
+    dest = _leer_secret_seguridad("otp_email", "")
+    if dest:
+        return dest
+    try:
+        from planta.avisos import _config_avisos
+
+        return str(_config_avisos().get("email_to") or "").strip()
+    except Exception:
+        return ""
+
+
+def iniciar_otp_pendiente(
+    session_state: Any,
+    *,
+    usuario: str,
+    rol: str,
+    planta: str = "",
+    minutos: int = 10,
+) -> dict:
+    """
+    Genera OTP de 6 dígitos, lo guarda hasheado en sesión y lo envía por email.
+    No abre sesión aún.
+    """
+    _init_state(session_state)
+    codigo = f"{secrets.randbelow(1_000_000):06d}"
+    digests = hashlib.sha256(codigo.encode("utf-8")).hexdigest()
+    session_state["otp_pendiente"] = True
+    session_state["otp_hash"] = digests
+    session_state["otp_expira"] = _ahora() + max(60, int(minutos) * 60)
+    session_state["otp_intentos"] = 0
+    session_state["otp_usuario"] = sanitizar_texto(usuario, 120)
+    session_state["otp_rol"] = normalizar_rol(rol)
+    session_state["otp_planta"] = str(planta or "").strip()
+    session_state["autenticado"] = False
+
+    destino = otp_email_destino()
+    if not destino:
+        limpiar_otp_pendiente(session_state)
+        return {
+            "ok": False,
+            "mensaje": "OTP activo pero falta email destino (seguridad.otp_email o avisos.email_to).",
+        }
+
+    try:
+        from planta.avisos import enviar_aviso_email
+
+        asunto = "Validador · código de acceso"
+        cuerpo = (
+            f"Código de acceso (OTP): {codigo}\n"
+            f"Usuario: {usuario}\n"
+            f"Válido {minutos} minutos.\n"
+            "Si no solicitó el ingreso, ignore este correo."
+        )
+        envio = enviar_aviso_email(asunto, cuerpo)
+    except Exception as e:
+        limpiar_otp_pendiente(session_state)
+        return {"ok": False, "mensaje": f"No se pudo enviar OTP: {e}"}
+
+    if not envio.get("ok"):
+        limpiar_otp_pendiente(session_state)
+        return {
+            "ok": False,
+            "mensaje": envio.get("mensaje") or "Fallo al enviar el correo OTP.",
+        }
+
+    registrar_evento(
+        "OTP_ENVIADO",
+        f"OTP enviado a {destino[:3]}***",
+        severidad="info",
+        usuario=usuario,
+    )
+    enmascarado = destino
+    if "@" in destino:
+        nom, dom = destino.split("@", 1)
+        enmascarado = (nom[:2] + "***@" + dom) if nom else "***@" + dom
+    return {
+        "ok": True,
+        "mensaje": f"Código enviado a {enmascarado}. Revise su correo.",
+        "destino": enmascarado,
+    }
+
+
+def limpiar_otp_pendiente(session_state: Any) -> None:
+    for k in (
+        "otp_pendiente",
+        "otp_hash",
+        "otp_expira",
+        "otp_intentos",
+        "otp_usuario",
+        "otp_rol",
+        "otp_planta",
+    ):
+        session_state.pop(k, None)
+
+
+def verificar_otp_y_abrir_sesion(session_state: Any, codigo_in: str) -> dict:
+    """Valida OTP pendiente y abre sesión de planta."""
+    _init_state(session_state)
+    if not session_state.get("otp_pendiente"):
+        return {"ok": False, "mensaje": "No hay verificación OTP pendiente."}
+
+    expira = float(session_state.get("otp_expira") or 0)
+    if _ahora() > expira:
+        limpiar_otp_pendiente(session_state)
+        return {"ok": False, "mensaje": "El código OTP expiró. Vuelva a ingresar."}
+
+    intentos = int(session_state.get("otp_intentos") or 0)
+    if intentos >= 5:
+        limpiar_otp_pendiente(session_state)
+        registrar_fallo_login(session_state, session_state.get("otp_usuario") or "")
+        return {"ok": False, "mensaje": "Demasiados intentos OTP. Reinicie el login."}
+
+    codigo = re.sub(r"\D", "", str(codigo_in or ""))[:8]
+    esperado = str(session_state.get("otp_hash") or "")
+    digests = hashlib.sha256(codigo.encode("utf-8")).hexdigest()
+    if not codigo or not hmac.compare_digest(digests, esperado):
+        session_state["otp_intentos"] = intentos + 1
+        resto = 5 - (intentos + 1)
+        return {
+            "ok": False,
+            "mensaje": f"Código incorrecto. Intentos OTP restantes: {max(0, resto)}.",
+        }
+
+    usuario = session_state.get("otp_usuario") or ""
+    rol = normalizar_rol(session_state.get("otp_rol"))
+    planta = str(session_state.get("otp_planta") or "").strip()
+    limpiar_otp_pendiente(session_state)
+    registrar_login_ok(session_state, usuario)
+    session_state["rol_planta"] = rol
+    if planta:
+        session_state["nombre_planta_sesion"] = planta
+    registrar_evento("OTP_OK", "OTP verificado", severidad="info", usuario=usuario)
+    return {
+        "ok": True,
+        "mensaje": f"✅ Acceso concedido · rol {rol}" + (f" · {planta}" if planta else "") + ".",
+        "rol": rol,
+        "planta": planta or None,
     }
 
 

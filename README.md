@@ -55,7 +55,7 @@ Si el Excel no trae LOTE/PESO/CALIBRE con esos nombres, se mapean en Resumen. Ro
 Opcional vía secrets `[avisos]`: al registrar ruptura de frío se notifica por correo SMTP; WhatsApp (CallMeBot/Twilio) cuando lo configure.
 
 ### Seguridad (cortafuego)
-Login con bloqueo, token de sesión, timeout, validación de uploads y bitácora local.
+Login con bloqueo, token de sesión, timeout, validación de uploads y bitácora local. **OTP por correo** (doble factor) si hay SMTP en `[avisos]` o `seguridad.otp_habilitado = true`.
 
 ### Sello Ed25519
 Firma de reportes con `LLAVE_PRIVADA` (secrets). Verificación pública de PDF sin login de planta.

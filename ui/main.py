@@ -74,6 +74,7 @@ def run() -> None:
         st.sidebar.markdown("---")
         if st.sidebar.button("Cerrar sesión segura", key="btn_fw_logout"):
             firewall.cerrar_sesion(st.session_state, "logout_manual")
+            firewall.limpiar_otp_pendiente(st.session_state)
             st.session_state["rol_planta"] = None
             st.session_state["nombre_planta_sesion"] = None
             st.rerun()
@@ -204,26 +205,81 @@ def run() -> None:
         usuarioInput = st.text_input("Usuario:", key="login_usuario")
         passwordInput = st.text_input("Contraseña:", type="password", key="login_clave")
 
-        if st.button("Ingresar", type="primary", key="btn_login_planta"):
-            resultado_login = firewall.intentar_login_lista(
-                st.session_state,
-                usuario_in=usuarioInput,
-                clave_in=passwordInput,
-                candidatos=accesos_planta,
+        _otp_on = firewall.otp_esta_habilitado()
+        if st.session_state.get("otp_pendiente"):
+            st.info(
+                st.session_state.get("otp_mensaje_ui")
+                or "Ingrese el código de 6 dígitos enviado a su correo."
             )
-            if resultado_login.get("ok"):
-                st.session_state["rol_planta"] = resultado_login.get("rol") or "supervisor"
-                if resultado_login.get("planta"):
-                    st.session_state["nombre_planta_sesion"] = resultado_login["planta"]
-                st.success(resultado_login.get("mensaje") or "Acceso concedido.")
-                st.rerun()
-            else:
-                st.error(resultado_login.get("mensaje") or "Credenciales incorrectas.")
-                if resultado_login.get("bloqueado"):
+            codigo_otp = st.text_input("Código OTP", key="login_otp_codigo", max_chars=8)
+            c_otp1, c_otp2 = st.columns(2)
+            with c_otp1:
+                if st.button("Verificar código", type="primary", key="btn_login_otp"):
+                    r_otp = firewall.verificar_otp_y_abrir_sesion(
+                        st.session_state, codigo_otp
+                    )
+                    if r_otp.get("ok"):
+                        st.session_state["rol_planta"] = r_otp.get("rol") or "supervisor"
+                        if r_otp.get("planta"):
+                            st.session_state["nombre_planta_sesion"] = r_otp["planta"]
+                        st.session_state.pop("otp_mensaje_ui", None)
+                        st.success(r_otp.get("mensaje") or "Acceso concedido.")
+                        st.rerun()
+                    else:
+                        st.error(r_otp.get("mensaje") or "Código inválido.")
+            with c_otp2:
+                if st.button("Cancelar OTP", key="btn_cancel_otp"):
+                    firewall.limpiar_otp_pendiente(st.session_state)
+                    st.session_state.pop("otp_mensaje_ui", None)
                     st.rerun()
+            st.caption("El código vence en unos minutos. Revise spam si no llega.")
+        else:
+            if st.button("Ingresar", type="primary", key="btn_login_planta"):
+                resultado_login = firewall.intentar_login_lista(
+                    st.session_state,
+                    usuario_in=usuarioInput,
+                    clave_in=passwordInput,
+                    candidatos=accesos_planta,
+                    abrir_sesion=not _otp_on,
+                )
+                if resultado_login.get("ok"):
+                    if _otp_on:
+                        envio = firewall.iniciar_otp_pendiente(
+                            st.session_state,
+                            usuario=resultado_login.get("usuario") or usuarioInput,
+                            rol=resultado_login.get("rol") or "supervisor",
+                            planta=resultado_login.get("planta") or "",
+                        )
+                        if envio.get("ok"):
+                            st.session_state["otp_mensaje_ui"] = envio.get("mensaje")
+                            st.rerun()
+                        else:
+                            st.error(envio.get("mensaje") or "No se pudo enviar OTP.")
+                            st.caption(
+                                "Configure [avisos] email SMTP o desactive OTP "
+                                "(`seguridad.otp_habilitado = false`)."
+                            )
+                    else:
+                        st.session_state["rol_planta"] = (
+                            resultado_login.get("rol") or "supervisor"
+                        )
+                        if resultado_login.get("planta"):
+                            st.session_state["nombre_planta_sesion"] = resultado_login[
+                                "planta"
+                            ]
+                        st.success(resultado_login.get("mensaje") or "Acceso concedido.")
+                        st.rerun()
+                else:
+                    st.error(resultado_login.get("mensaje") or "Credenciales incorrectas.")
+                    if resultado_login.get("bloqueado"):
+                        st.rerun()
         _nombres_p = listar_nombres_planta(accesos_planta)
         if _nombres_p:
             st.caption("Plantas configuradas: " + " · ".join(_nombres_p))
+        if _otp_on:
+            st.caption("OTP por correo activo · doble factor de acceso")
+        else:
+            st.caption("OTP desactivado o sin email SMTP configurado")
         st.caption(f"Cortafuego · máx. {firewall.politica()['max_intentos']} intentos")
         st.stop()
 
