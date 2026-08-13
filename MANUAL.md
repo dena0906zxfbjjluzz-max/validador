@@ -33,7 +33,8 @@ Tras el login, use los **botones de Navegación** en la barra lateral (activo = 
 
 | Pantalla | Qué hace |
 |----------|----------|
-| **Inicio** | Atajos 2×2 hacia QR, contenedores, alertas y lote |
+| **Inicio** | Atajos 2×2 hacia dashboard, QR, contenedores, alertas y lote |
+| **Dashboard** | KPIs del turno + alertas de frío recientes |
 | **Operación del lote** | Aparece al cargar Excel/CSV; elija un módulo (Resumen, Balanza, LMR, …) |
 | **QR pallet / Contenedores / Alertas** | Pantallas propias |
 
