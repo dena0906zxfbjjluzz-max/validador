@@ -155,13 +155,20 @@ def _registrar_aviso_enviado(clave: str, canal: str, detalle: str = ""):
     conn.close()
 
 
-def enviar_aviso_email(asunto: str, cuerpo: str) -> dict:
+def enviar_aviso_email(asunto: str, cuerpo: str, para: str | None = None) -> dict:
     cfg = _config_avisos()
     if not cfg["email_ok"]:
         return {
             "ok": False,
             "configurado": False,
             "mensaje": "Email no configurado en secrets [avisos]",
+        }
+    destino = (para or cfg["email_to"] or "").strip()
+    if not destino:
+        return {
+            "ok": False,
+            "configurado": False,
+            "mensaje": "Sin destinatario de email",
         }
     try:
         import smtplib
@@ -170,16 +177,16 @@ def enviar_aviso_email(asunto: str, cuerpo: str) -> dict:
         msg = MIMEText(cuerpo, "plain", "utf-8")
         msg["Subject"] = asunto
         msg["From"] = cfg["smtp_from"]
-        msg["To"] = cfg["email_to"]
+        msg["To"] = destino
         port = int(cfg["smtp_port"] or 587)
         with smtplib.SMTP(cfg["smtp_host"], port, timeout=20) as server:
             server.starttls()
             server.login(cfg["smtp_user"], cfg["smtp_pass"])
-            server.sendmail(cfg["smtp_from"], [cfg["email_to"]], msg.as_string())
+            server.sendmail(cfg["smtp_from"], [destino], msg.as_string())
         return {
             "ok": True,
             "configurado": True,
-            "mensaje": f"Email enviado a {cfg['email_to']}",
+            "mensaje": f"Email enviado a {destino}",
         }
     except Exception as e:
         return {

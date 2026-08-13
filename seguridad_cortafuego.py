@@ -658,7 +658,7 @@ def iniciar_otp_pendiente(
             f"Válido {minutos} minutos.\n"
             "Si no solicitó el ingreso, ignore este correo."
         )
-        envio = enviar_aviso_email(asunto, cuerpo)
+        envio = enviar_aviso_email(asunto, cuerpo, para=destino)
     except Exception as e:
         limpiar_otp_pendiente(session_state)
         return {"ok": False, "mensaje": f"No se pudo enviar OTP: {e}"}
