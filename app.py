@@ -71,6 +71,35 @@ def listar_accesos_planta() -> tuple[list[dict], str | None]:
     """
     candidatos: list[dict] = []
 
+    def _tabla(nombre: str):
+        """Lee una sección de secrets (compatible Streamlit Cloud)."""
+        try:
+            return st.secrets[nombre]
+        except Exception:
+            pass
+        try:
+            return st.secrets.get(nombre)
+        except Exception:
+            return None
+
+    def _campo(obj, *nombres, default=None):
+        if obj is None:
+            return default
+        for n in nombres:
+            try:
+                v = obj[n]
+                if v is not None and str(v).strip() != "":
+                    return v
+            except Exception:
+                pass
+            try:
+                v = obj.get(n)
+                if v is not None and str(v).strip() != "":
+                    return v
+            except Exception:
+                pass
+        return default
+
     def _push(usuario, clave, rol):
         u = str(usuario or "").strip()
         c = str(clave or "")
@@ -85,25 +114,27 @@ def listar_accesos_planta() -> tuple[list[dict], str | None]:
         )
 
     try:
-        usuarios_sec = st.secrets.get("usuarios")
+        usuarios_sec = _tabla("usuarios")
         if usuarios_sec is not None:
-            # Lista tipo [[usuarios]]
             if isinstance(usuarios_sec, list):
                 for item in usuarios_sec:
                     try:
-                        _push(item.get("usuario"), item.get("clave"), item.get("rol"))
+                        _push(
+                            _campo(item, "usuario", "user"),
+                            _campo(item, "clave", "password", "pass"),
+                            _campo(item, "rol", default="supervisor"),
+                        )
                     except Exception:
                         pass
             else:
-                # Tabla anidada [usuarios.nombre]
                 try:
                     for _k in usuarios_sec:
                         item = usuarios_sec[_k]
                         try:
                             _push(
-                                item.get("usuario") or _k,
-                                item.get("clave"),
-                                item.get("rol"),
+                                _campo(item, "usuario", "user", default=_k),
+                                _campo(item, "clave", "password", "pass"),
+                                _campo(item, "rol", default="supervisor"),
                             )
                         except Exception:
                             pass
@@ -113,20 +144,24 @@ def listar_accesos_planta() -> tuple[list[dict], str | None]:
         pass
 
     try:
-        creds = st.secrets.get("credenciales")
+        creds = _tabla("credenciales")
         if creds is not None:
             _push(
-                creds.get("usuario"),
-                creds.get("clave"),
-                creds.get("rol", "supervisor"),
+                _campo(creds, "usuario", "user"),
+                _campo(creds, "clave", "password", "pass"),
+                _campo(creds, "rol", default="supervisor"),
             )
     except Exception:
         pass
 
     try:
-        op = st.secrets.get("credenciales_operario")
+        op = _tabla("credenciales_operario")
         if op is not None:
-            _push(op.get("usuario"), op.get("clave"), op.get("rol", "operario"))
+            _push(
+                _campo(op, "usuario", "user"),
+                _campo(op, "clave", "password", "pass"),
+                _campo(op, "rol", default="operario"),
+            )
     except Exception:
         pass
 
@@ -142,11 +177,13 @@ def listar_accesos_planta() -> tuple[list[dict], str | None]:
 
     if not unicos:
         return [], (
-            "No se encontraron credenciales en secrets. Configure:\n\n"
+            "No se encontraron credenciales en **Streamlit Secrets**.\n\n"
+            "En la nube: menú ⋮ de la app → **Settings** → **Secrets** → pegue:\n\n"
             "[credenciales]\n"
             'usuario = "su_usuario"\n'
             'clave = "su_clave_secreta"\n'
-            'rol = "supervisor"'
+            'rol = "supervisor"\n\n'
+            "Guarde y recargue la app. En local use `.streamlit/secrets.toml`."
         )
     return unicos, None
 
