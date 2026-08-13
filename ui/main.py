@@ -15,6 +15,7 @@ from ui.auth import (
     listar_nombres_planta,
     modo_demo_activo,
 )
+from ui.components import cerrar_sidebar_si_movil, pedir_cierre_sidebar_movil
 from ui.style import pagina_ecc_style, sidebar_brand
 from ui.theme import apply_theme
 from ui.screens import admin_usuarios as screen_admin_usuarios
@@ -75,6 +76,10 @@ def run() -> None:
             "Verificación pública ECC": "Público · verificar PDF",
         }.get(x, x),
     )
+    _modo_prev = st.session_state.get("_modo_app_prev")
+    if _modo_prev is not None and _modo_prev != modo_app:
+        pedir_cierre_sidebar_movil()
+    st.session_state["_modo_app_prev"] = modo_app
 
     # Cortafuego: cerrar sesión (solo si autenticado) — detalle ya va en marca lateral
     if st.session_state.get("autenticado"):
@@ -322,6 +327,7 @@ def run() -> None:
 
     # Modo móvil: solo QR + frío (sin packing completo)
     if modo_app == "Móvil · QR + frío":
+        cerrar_sidebar_si_movil()
         st.sidebar.caption(f"Planta: {_plant_label}")
         screen_movil.render(
             producto_sel=st.session_state.get("dash_producto") or "Palta Hass",
@@ -428,6 +434,7 @@ def run() -> None:
             st.session_state["vista_planta"] = _vid
             if _vid == "operacion":
                 st.session_state["modulo_nav"] = st.session_state.get("modulo_nav") or "Resumen del lote"
+            pedir_cierre_sidebar_movil()
             st.rerun()
 
     vista = st.session_state.get("vista_planta", "inicio")
@@ -443,9 +450,11 @@ def run() -> None:
                 use_container_width=True,
             ):
                 st.session_state["modulo_nav"] = _mod
+                pedir_cierre_sidebar_movil()
                 st.rerun()
         if st.sidebar.button("Volver al inicio", key="btn_volver_inicio", use_container_width=True):
             st.session_state["vista_planta"] = "inicio"
+            pedir_cierre_sidebar_movil()
             st.rerun()
 
     with st.sidebar.expander("Parámetros de planta", expanded=(vista == "inicio")):
@@ -543,6 +552,9 @@ def run() -> None:
 
     vista = st.session_state.get("vista_planta", "inicio")
     modulo_nav = st.session_state.get("modulo_nav", "Resumen del lote")
+
+    # Celular: tras elegir sección, cerrar menú lateral (no tapa el contenido)
+    cerrar_sidebar_si_movil()
 
     # Enrutado de pantallas
     if vista == "inicio":

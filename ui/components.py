@@ -3,9 +3,73 @@ from __future__ import annotations
 
 import pandas as pd
 import streamlit as st
+import streamlit.components.v1 as components
 
 import funciones
 from ui.style import pagina_ecc_style
+
+
+def pedir_cierre_sidebar_movil() -> None:
+    """Marca que, tras el próximo rerun, hay que cerrar el menú en celular."""
+    st.session_state["_cerrar_sidebar_movil"] = True
+
+
+def cerrar_sidebar_si_movil() -> None:
+    """
+    En pantallas chicas, tras cambiar de sección el sidebar de Streamlit
+    suele quedarse abierto y tapa el contenido. Simula el botón de cerrar.
+    """
+    if not st.session_state.pop("_cerrar_sidebar_movil", False):
+        return
+    components.html(
+        """
+        <script>
+        (function () {
+          const win = window.parent;
+          const doc = win.document;
+          if (!win.matchMedia || !win.matchMedia("(max-width: 768px)").matches) {
+            return;
+          }
+          function tryClose() {
+            const selectors = [
+              '[data-testid="stSidebarCollapseButton"]',
+              'button[data-testid="stBaseButton-headerNoPadding"]',
+              'button[kind="headerNoPadding"]',
+              'section[data-testid="stSidebar"] button[kind="header"]',
+              'section[data-testid="stSidebar"] [data-testid="stBaseButton-header"]',
+              'button[aria-label="Close sidebar"]',
+              'button[aria-label="Cerrar barra lateral"]',
+              'button[aria-label="Collapse sidebar"]',
+            ];
+            for (const sel of selectors) {
+              const btn = doc.querySelector(sel);
+              if (btn) {
+                btn.click();
+                return true;
+              }
+            }
+            /* Fallback: primer botón del encabezado del sidebar */
+            const side = doc.querySelector('section[data-testid="stSidebar"]');
+            if (side) {
+              const headerBtn = side.querySelector("button");
+              if (headerBtn) {
+                headerBtn.click();
+                return true;
+              }
+            }
+            return false;
+          }
+          let n = 0;
+          const t = setInterval(function () {
+            n += 1;
+            if (tryClose() || n > 25) clearInterval(t);
+          }, 40);
+        })();
+        </script>
+        """,
+        height=0,
+        width=0,
+    )
 
 
 def render_modulo_alertas_tendencias(

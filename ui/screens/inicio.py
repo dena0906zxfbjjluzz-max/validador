@@ -11,6 +11,7 @@ import funciones
 import motor_planta
 import seguridad_cortafuego as firewall
 from ui.auth import purgar_frio_local_ui
+from ui.components import pedir_cierre_sidebar_movil
 from ui.style import pagina_ecc_style
 
 
@@ -32,45 +33,42 @@ def render(*, plant_label: str, es_supervisor: bool = False):
         unsafe_allow_html=True,
     )
 
+    def _ir(vista: str, **extra):
+        st.session_state["vista_planta"] = vista
+        for k, v in extra.items():
+            st.session_state[k] = v
+        pedir_cierre_sidebar_movil()
+        st.rerun()
+
     _af_home = funciones.alertas_frio_activas(limite=5, horas_ventana=12)
     if _af_home.get("nivel") == "CRITICO":
         st.error(_af_home.get("mensaje"))
         if st.button("Ver dashboard de turno", key="btn_home_dash_crit"):
-            st.session_state["vista_planta"] = "dashboard"
-            st.rerun()
+            _ir("dashboard")
     elif _af_home.get("nivel") == "ALERTA":
         st.warning(_af_home.get("mensaje"))
         if st.button("Ver dashboard de turno", key="btn_home_dash_alerta"):
-            st.session_state["vista_planta"] = "dashboard"
-            st.rerun()
+            _ir("dashboard")
 
     c1, c2 = st.columns(2)
     with c1:
         if st.button("Panel del turno", type="primary", key="tile_dash", use_container_width=True):
-            st.session_state["vista_planta"] = "dashboard"
-            st.rerun()
+            _ir("dashboard")
         if st.button("Escanear pallet", key="tile_qr", use_container_width=True):
-            st.session_state["vista_planta"] = "qr"
-            st.rerun()
+            _ir("qr")
         if st.button("Contenedores", key="tile_cnt", use_container_width=True):
-            st.session_state["vista_planta"] = "contenedores"
-            st.rerun()
+            _ir("contenedores")
     with c2:
         if st.button("Alertas de planta", key="tile_alertas", use_container_width=True):
-            st.session_state["vista_planta"] = "alertas"
-            st.rerun()
+            _ir("alertas")
         if st.button("Historial", key="tile_hist", use_container_width=True):
-            st.session_state["vista_planta"] = "historial"
-            st.rerun()
+            _ir("historial")
         if es_supervisor:
             if st.button("Usuarios de línea", key="tile_users", use_container_width=True):
-                st.session_state["vista_planta"] = "admin_usuarios"
-                st.rerun()
+                _ir("admin_usuarios")
         if st.session_state.get("df_trabajo") is not None:
             if st.button("Operación del lote", type="primary", key="btn_ir_operacion", use_container_width=True):
-                st.session_state["vista_planta"] = "operacion"
-                st.session_state["modulo_nav"] = "Resumen del lote"
-                st.rerun()
+                _ir("operacion", modulo_nav="Resumen del lote")
 
     if st.session_state.get("df_trabajo") is not None:
         st.success(f"Lote activo: **{st.session_state.get('nombre_archivo', 'archivo')}**")
