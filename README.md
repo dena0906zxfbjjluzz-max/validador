@@ -2,6 +2,16 @@
 
 Suite AgTech de piso de empaque: Python (Streamlit) + sello Ed25519 (Rust/Python) + SQLite y Supabase opcional.
 
+## Estructura del código
+
+| Ruta | Rol |
+|------|-----|
+| `app.py` | Entrypoint Streamlit (`streamlit run app.py`) |
+| `ui/` | Pantallas, tema, login y navegación |
+| `planta/` | Lógica de negocio (DB, frío, QR, PDF, avisos, M7) |
+| `funciones.py` | Fachada: reexporta `planta/` (compat `import funciones`) |
+| `motor_planta.py` / `seguridad_cortafuego.py` | Firma Ed25519 y cortafuego |
+
 **Estado:** producto **v1 cerrado** para entrega / uso / venta de código.  
 **Instalación:** [INSTALACION.md](INSTALACION.md) · **Manual de uso (operarios):** [MANUAL.md](MANUAL.md) · acta de entrega [ENTREGA.md](ENTREGA.md) · plantilla de venta [CONTRATO_TRASPASO.md](CONTRATO_TRASPASO.md).
 

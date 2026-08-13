@@ -23,6 +23,8 @@ cd validador
 
 O descargar ZIP del repositorio en GitHub → **Code → Download ZIP**.
 
+El entrypoint sigue siendo **`app.py`**. La UI está en `ui/` y la lógica en `planta/` (`funciones.py` solo reexporta).
+
 ---
 
 ## 3. Dependencias (local)
