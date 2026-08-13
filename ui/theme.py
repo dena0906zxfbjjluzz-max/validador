@@ -6,7 +6,7 @@ def apply_theme() -> None:
     st.markdown(
         """
         <style>
-        @import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,600;0,9..40,700;0,9..40,800;1,9..40,400&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,600;0,9..40,700;0,9..40,800;1,9..40,400&family=Outfit:wght@500;600;700;800&display=swap');
 
         :root {
             --sb-bg: #060A10;
@@ -24,10 +24,151 @@ def apply_theme() -> None:
             --sb-input: #090E15;
             --sb-green: var(--sb-accent);
             --sb-radius: 12px;
+            --sb-font: "DM Sans", "Segoe UI", system-ui, sans-serif;
+            --sb-display: "Outfit", "DM Sans", system-ui, sans-serif;
         }
 
         html, body, [data-testid="stAppViewContainer"] {
-            font-family: "DM Sans", "Segoe UI", system-ui, sans-serif;
+            font-family: var(--sb-font);
+        }
+
+        /* Cabecera de pantalla (sistema) */
+        .vx-page-header {
+            margin: 0 0 1.35rem 0;
+            padding: 0 0 1.05rem 0;
+            border-bottom: 1px solid rgba(26, 38, 54, 0.95);
+            background:
+                linear-gradient(90deg, rgba(43, 184, 168, 0.07), transparent 42%),
+                linear-gradient(270deg, rgba(212, 168, 75, 0.05), transparent 35%);
+            border-radius: 0 0 4px 4px;
+        }
+        .vx-page-brand {
+            display: flex;
+            align-items: center;
+            gap: 0.55rem;
+            margin-bottom: 0.55rem;
+            flex-wrap: wrap;
+        }
+        .vx-page-mark {
+            width: 0.55rem;
+            height: 0.55rem;
+            border-radius: 2px;
+            background: linear-gradient(135deg, var(--sb-accent), #1A8F84);
+            box-shadow: 0 0 0 3px rgba(43, 184, 168, 0.18);
+            flex-shrink: 0;
+        }
+        .vx-page-eyebrow {
+            font-family: var(--sb-font);
+            font-size: 0.72rem;
+            font-weight: 700;
+            letter-spacing: 0.14em;
+            text-transform: uppercase;
+            color: var(--sb-accent) !important;
+        }
+        .vx-page-meta {
+            font-size: 0.72rem;
+            font-weight: 600;
+            color: var(--sb-muted) !important;
+            letter-spacing: 0.04em;
+            padding: 0.12rem 0.45rem;
+            border: 1px solid var(--sb-border);
+            border-radius: 4px;
+            background: rgba(9, 14, 21, 0.55);
+        }
+        .vx-page-title {
+            margin: 0 !important;
+            padding: 0 !important;
+            font-family: var(--sb-display) !important;
+            font-size: clamp(1.55rem, 2.4vw, 2.05rem) !important;
+            font-weight: 700 !important;
+            letter-spacing: -0.035em !important;
+            line-height: 1.15 !important;
+            color: var(--sb-text) !important;
+        }
+        .vx-page-desc {
+            margin: 0.45rem 0 0 0 !important;
+            max-width: 36rem;
+            font-size: 0.95rem !important;
+            line-height: 1.45 !important;
+            color: var(--sb-muted) !important;
+            font-weight: 400 !important;
+        }
+
+        /* Marca lateral */
+        .vx-side-brand {
+            display: flex;
+            gap: 0.7rem;
+            align-items: flex-start;
+            padding: 0.15rem 0.15rem 1rem 0.15rem;
+            margin-bottom: 0.35rem;
+            border-bottom: 1px solid var(--sb-border);
+        }
+        .vx-side-mark {
+            width: 2rem;
+            height: 2rem;
+            border-radius: 8px;
+            flex-shrink: 0;
+            background:
+                linear-gradient(145deg, rgba(43,184,168,0.35), rgba(43,184,168,0.05)),
+                #0A121A;
+            border: 1px solid rgba(43,184,168,0.35);
+            box-shadow: inset 0 1px 0 rgba(255,255,255,0.06);
+            position: relative;
+        }
+        .vx-side-mark::after {
+            content: "";
+            position: absolute;
+            inset: 6px;
+            border-radius: 3px;
+            background: linear-gradient(135deg, var(--sb-accent), #1A8F84);
+            opacity: 0.95;
+        }
+        .vx-side-product {
+            margin: 0 !important;
+            font-size: 0.68rem !important;
+            font-weight: 700 !important;
+            letter-spacing: 0.12em !important;
+            text-transform: uppercase !important;
+            color: var(--sb-accent) !important;
+        }
+        .vx-side-plant {
+            margin: 0.12rem 0 0 0 !important;
+            font-family: var(--sb-display) !important;
+            font-size: 0.98rem !important;
+            font-weight: 700 !important;
+            letter-spacing: -0.02em !important;
+            color: var(--sb-text) !important;
+            line-height: 1.2 !important;
+        }
+        .vx-side-sub {
+            margin: 0.2rem 0 0 0 !important;
+            font-size: 0.72rem !important;
+            color: var(--sb-muted) !important;
+        }
+
+        .vx-home-hero {
+            position: relative;
+            overflow: hidden;
+            border-radius: 16px;
+            padding: 1.75rem 1.6rem 1.55rem;
+            margin-bottom: 1.25rem;
+            border: 1px solid rgba(43, 184, 168, 0.22);
+            background:
+                radial-gradient(ellipse 70% 80% at 0% 0%, rgba(43,184,168,0.18), transparent 55%),
+                radial-gradient(ellipse 50% 60% at 100% 20%, rgba(212,168,75,0.10), transparent 50%),
+                linear-gradient(165deg, #0E1620 0%, #0A1018 100%);
+            box-shadow: 0 24px 48px rgba(0,0,0,0.35);
+        }
+        .vx-home-hero .vx-page-title {
+            font-size: clamp(1.85rem, 3.2vw, 2.45rem) !important;
+        }
+        .vx-home-kicker {
+            margin: 0 0 0.65rem 0 !important;
+            font-size: 0.72rem !important;
+            font-weight: 700 !important;
+            letter-spacing: 0.14em !important;
+            text-transform: uppercase !important;
+            color: var(--sb-gold) !important;
         }
 
         /* CRÍTICO: no forzar font/color en TODOS los span — rompe Material Icons
@@ -127,9 +268,47 @@ def apply_theme() -> None:
             max-width: 100%;
         }
         section.main .block-container {
-            padding-top: 1.25rem;
-            max-width: 1400px;
+            padding-top: 1.1rem;
+            padding-bottom: 2.5rem;
+            max-width: 1180px;
         }
+
+        [data-testid="stMarkdownContainer"] h1,
+        [data-testid="stMarkdownContainer"] h2,
+        [data-testid="stMarkdownContainer"] h3 {
+            font-family: var(--sb-display), var(--sb-font) !important;
+            letter-spacing: -0.02em;
+        }
+
+        [data-testid="stMetric"] {
+            background: linear-gradient(180deg, rgba(17,25,37,0.95), rgba(12,18,25,0.9));
+            border: 1px solid var(--sb-border);
+            border-radius: 12px;
+            padding: 0.75rem 0.9rem 0.85rem;
+            box-shadow: 0 10px 28px rgba(0,0,0,0.18);
+        }
+        [data-testid="stMetricLabel"] {
+            color: var(--sb-muted) !important;
+            font-size: 0.78rem !important;
+            font-weight: 600 !important;
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
+        }
+        [data-testid="stMetricValue"] {
+            color: var(--sb-text) !important;
+            font-family: var(--sb-display) !important;
+            font-weight: 700 !important;
+            font-size: 1.55rem !important;
+            letter-spacing: -0.03em;
+        }
+
+        .stButton > button {
+            transition: border-color 0.15s ease, background 0.15s ease, transform 0.12s ease;
+        }
+        .stButton > button:active {
+            transform: translateY(1px);
+        }
+
 
         div[data-testid="stVerticalBlockBorderWrapper"] {
             background:

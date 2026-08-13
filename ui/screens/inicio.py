@@ -15,7 +15,22 @@ from ui.style import pagina_ecc_style
 
 
 def render(*, plant_label: str, es_supervisor: bool = False):
-    pagina_ecc_style(plant_label, "Cargue el packing en la barra lateral.")
+    import html as _html
+
+    _pl = _html.escape(plant_label or "Planta Autorizada")
+    st.markdown(
+        f"""
+        <section class="vx-home-hero">
+          <p class="vx-home-kicker">Suite de planta · packing &amp; frío</p>
+          <h1 class="vx-page-title">{_pl}</h1>
+          <p class="vx-page-desc">
+            Calidad, trazabilidad y cadena de frío en un solo espacio de trabajo.
+            Cargue el packing en la barra lateral para operar el lote.
+          </p>
+        </section>
+        """,
+        unsafe_allow_html=True,
+    )
 
     _af_home = funciones.alertas_frio_activas(limite=5, horas_ventana=12)
     if _af_home.get("nivel") == "CRITICO":
@@ -55,7 +70,12 @@ def render(*, plant_label: str, es_supervisor: bool = False):
 
 
     st.markdown("---")
-    st.subheader("Servicios de planta")
+    st.markdown(
+        '<p class="vx-page-eyebrow" style="margin:0 0 0.65rem 0">Infraestructura</p>'
+        '<h2 class="vx-page-title" style="font-size:1.25rem!important;margin:0 0 0.85rem 0!important">'
+        "Servicios de planta</h2>",
+        unsafe_allow_html=True,
+    )
     col_der = st.container()
     with col_der:
         if "panel_der" not in st.session_state:

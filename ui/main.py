@@ -14,7 +14,7 @@ from ui.auth import (
     listar_accesos_planta,
     listar_nombres_planta,
 )
-from ui.style import pagina_ecc_style
+from ui.style import pagina_ecc_style, sidebar_brand
 from ui.theme import apply_theme
 from ui.screens import alertas as screen_alertas
 from ui.screens import contenedores as screen_contenedores
@@ -38,10 +38,23 @@ def run() -> None:
 
     apply_theme()
 
+    # Marca de producto en sidebar (antes de navegación)
+    _sb_planta = ""
+    try:
+        if st.session_state.get("autenticado"):
+            _sb_planta = cargar_nombre_planta()
+    except Exception:
+        _sb_planta = ""
+    sidebar_brand(
+        planta=_sb_planta or "Control de calidad",
+        usuario=st.session_state.get("fw_usuario") or "",
+        rol=st.session_state.get("rol_planta") or "",
+    )
+
     st.sidebar.markdown(
         """
-        <p class="sb-nav-label">Workspace</p>
-        <p class="sb-nav-title">Navegación</p>
+        <p class="sb-nav-label">Espacio de trabajo</p>
+        <p class="sb-nav-title">Módulo</p>
         """,
         unsafe_allow_html=True,
     )
@@ -56,13 +69,9 @@ def run() -> None:
         key="nav_modo_app",
     )
 
-    # Cortafuego: cerrar sesión (solo si autenticado)
+    # Cortafuego: cerrar sesión (solo si autenticado) — detalle ya va en marca lateral
     if st.session_state.get("autenticado"):
         st.sidebar.markdown("---")
-        st.sidebar.caption("🛡️ Cortafuego de planta")
-        _fw_user = st.session_state.get("fw_usuario") or "inspector"
-        _fw_rol = st.session_state.get("rol_planta") or "supervisor"
-        st.sidebar.caption(f"Sesión: `{_fw_user}` · {_fw_rol}")
         if st.sidebar.button("Cerrar sesión segura", key="btn_fw_logout"):
             firewall.cerrar_sesion(st.session_state, "logout_manual")
             st.session_state["rol_planta"] = None
@@ -71,10 +80,11 @@ def run() -> None:
 
     # ---------- MÓDULO PÚBLICO: verificación de PDF firmado (sin login) ----------
     if modo_app == "Verificación pública ECC":
-        st.title("Verificación pública de sello ECC")
-        st.write(
-            "Suba el PDF ejecutivo firmado para comprobar matemáticamente si la firma "
-            "Ed25519 es auténtica o si el documento fue alterado."
+        pagina_ecc_style(
+            "Verificación pública ECC",
+            "Compruebe si la firma Ed25519 del PDF es auténtica o si el documento fue alterado.",
+            eyebrow="Validador",
+            meta="sin login",
         )
 
         pdf_verif = st.file_uploader(
@@ -169,8 +179,12 @@ def run() -> None:
 
     # ---------- ACCESO PLANTA ----------
     if not st.session_state["autenticado"]:
-        st.title("Acceso restringido - Control de Calidad")
-        st.caption("Credenciales de planta. Para PDF use Verificación pública ECC.")
+        pagina_ecc_style(
+            "Acceso de planta",
+            "Credenciales de control de calidad. Para verificar un PDF use Verificación pública ECC.",
+            eyebrow="Validador",
+            meta="sesión segura",
+        )
 
         accesos_planta, error_creds = listar_accesos_planta()
         if error_creds:
