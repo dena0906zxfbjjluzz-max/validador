@@ -12,6 +12,7 @@ El personal de control de calidad e infraestructura de TI ha verificado satisfac
 - [ ] **Módulo 4: Cadena de Frío:** Registro y almacenamiento correcto de lecturas de túnel y Reefer en la tabla `public.control_frio`.
 - [ ] **Módulo 5: Contenedores y Precintos:** Validación del formulario de despacho y guardado de precintos ISO 6346.
 - [ ] **Módulo 6: Escaneo QR del Pallet:** Activación correcta de la cámara del celular, escaneo del código físico y consulta exitosa a la tabla `public.historial_reportes`.
+- [ ] **Módulo 7: Alertas y tendencias:** Veredicto de riesgo con frío (SQLite) y packing (pesos / LMR / merma); KPIs y detalle de alertas visibles en planta.
 
 ## Criptografía y Seguridad Operativa
 

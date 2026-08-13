@@ -25,6 +25,9 @@ QR/booking/ISO 6346, formulario de sello, SQLite + Supabase `contenedores_despac
 ### 6 · QR pallet
 Cámara / foto / texto → consulta `historial_reportes` en Supabase.
 
+### 7 · Alertas y tendencias
+Inteligencia operativa de planta: reglas + z-score sobre cadena de frío (SQLite) y el packing cargado (pesos atípicos, LMR por productor, merma). Anticipa rupturas y patrones de riesgo sin modelos externos.
+
 ### Seguridad (cortafuego)
 Login con bloqueo, token de sesión, timeout, validación de uploads y bitácora local.
 

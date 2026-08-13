@@ -27,6 +27,18 @@ En el menú de la izquierda elija:
 | **Planta / Packing (login)** | Personal de planta (calidad, packing) | **Sí** |
 | **Verificación pública ECC** | Cliente, auditor o inspector externo | **No** |
 
+### Navegación dentro de Planta
+
+Tras el login, use **Espacio de trabajo** en la barra lateral:
+
+| Pantalla | Qué hace |
+|----------|----------|
+| **Inicio** | Tarjetas de acceso y atajos (no es una lista de módulos) |
+| **Operación del lote** | Se abre al cargar el Excel/CSV; elija **un módulo** a la vez |
+| **QR pallet / Contenedores / Alertas** | Pantallas propias, sin mezclar con el resto |
+
+El archivo se carga desde **Cargar lote** (barra lateral). Al subirlo, la app entra sola al panel del lote.
+
 ---
 
 ## Cómo entrar (modo Planta)
@@ -88,6 +100,7 @@ Revise también:
 | **Cadena de frío** | Anota lecturas de cámara / túnel / reefer; guarda local y en nube si está Supabase |
 | **Contenedores y precintos** | Formulario de contenedor, booking, precinto (ISO 6346), QR si lo usa la planta |
 | **QR pallet** | Cámara o foto del QR → consulta respaldo en historial (Supabase) si está configurado |
+| **Alertas y tendencias** | Resume riesgos del frío y del packing (pesos raros, LMR por productor, merma) para anticipar problemas antes de cerrar el lote |
 
 No todos los turnos usan todos los módulos: use el que pida la operación de su planta.
 
@@ -121,6 +134,17 @@ Guarde los archivos con el número de lote / fecha en el nombre si su planta lo 
 4. Si Supabase está conectado, la lectura también puede ir a la nube (`control_frio`).
 
 Si no hay nube, al menos queda el registro local de la app (SQLite) según cómo esté desplegada.
+
+---
+
+## Alertas y tendencias (Módulo 7)
+
+1. Sin packing: el módulo muestra tendencias de **cadena de frío** desde el historial local.  
+2. Con archivo cargado: añade patrones de **peso**, **LMR por productor** y **merma**.  
+3. Revise el veredicto (`ESTABLE` / `VIGILANCIA` / `ACCION_REQUERIDA`) antes de congelar el lote.  
+4. Use el detalle de alertas y las tablas por cámara / productor para anticipar revisiones.
+
+No reemplaza el criterio del inspector: es un apoyo operativo sobre los datos ya registrados.
 
 ---
 
