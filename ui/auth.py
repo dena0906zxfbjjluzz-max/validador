@@ -8,7 +8,13 @@ import seguridad_cortafuego as firewall
 
 
 def cargar_nombre_planta() -> str:
-    """Nombre de la planta (secrets opcional; por defecto: Planta Autorizada)."""
+    """Nombre de la planta (sesión > secrets; por defecto: Planta Autorizada)."""
+    try:
+        ses = st.session_state.get("nombre_planta_sesion")
+        if ses and str(ses).strip():
+            return str(ses).strip()
+    except Exception:
+        pass
     try:
         if "NOMBRE_PLANTA" in st.secrets:
             valor = str(st.secrets["NOMBRE_PLANTA"]).strip()
@@ -87,7 +93,7 @@ def listar_accesos_planta() -> tuple[list[dict], str | None]:
                 pass
         return default
 
-    def _push(usuario, clave, rol):
+    def _push(usuario, clave, rol, planta=""):
         u = str(usuario or "").strip()
         c = str(clave or "")
         if not u or not c:
@@ -97,8 +103,45 @@ def listar_accesos_planta() -> tuple[list[dict], str | None]:
                 "usuario": u,
                 "clave": c,
                 "rol": firewall.normalizar_rol(rol),
+                "planta": str(planta or "").strip(),
             }
         )
+
+    # Multi-planta: [[plantas]] o [plantas.nombre]
+    try:
+        plantas_sec = _tabla("plantas")
+        if plantas_sec is not None:
+            if isinstance(plantas_sec, list):
+                for item in plantas_sec:
+                    try:
+                        _push(
+                            _campo(item, "usuario", "user"),
+                            _campo(item, "clave", "password", "pass"),
+                            _campo(item, "rol", default="supervisor"),
+                            _campo(item, "nombre", "nombre_planta", "planta", default=""),
+                        )
+                    except Exception:
+                        pass
+            else:
+                try:
+                    for _k in plantas_sec:
+                        item = plantas_sec[_k]
+                        try:
+                            nom = _campo(
+                                item, "nombre", "nombre_planta", "planta", default=_k
+                            )
+                            _push(
+                                _campo(item, "usuario", "user", default=_k),
+                                _campo(item, "clave", "password", "pass"),
+                                _campo(item, "rol", default="supervisor"),
+                                nom,
+                            )
+                        except Exception:
+                            pass
+                except Exception:
+                    pass
+    except Exception:
+        pass
 
     try:
         usuarios_sec = _tabla("usuarios")
@@ -110,6 +153,7 @@ def listar_accesos_planta() -> tuple[list[dict], str | None]:
                             _campo(item, "usuario", "user"),
                             _campo(item, "clave", "password", "pass"),
                             _campo(item, "rol", default="supervisor"),
+                            _campo(item, "planta", "nombre_planta", "nombre", default=""),
                         )
                     except Exception:
                         pass
@@ -122,6 +166,7 @@ def listar_accesos_planta() -> tuple[list[dict], str | None]:
                                 _campo(item, "usuario", "user", default=_k),
                                 _campo(item, "clave", "password", "pass"),
                                 _campo(item, "rol", default="supervisor"),
+                                _campo(item, "planta", "nombre_planta", "nombre", default=""),
                             )
                         except Exception:
                             pass
@@ -137,6 +182,7 @@ def listar_accesos_planta() -> tuple[list[dict], str | None]:
                 _campo(creds, "usuario", "user"),
                 _campo(creds, "clave", "password", "pass"),
                 _campo(creds, "rol", default="supervisor"),
+                _campo(creds, "nombre_planta", "planta", "nombre", default=""),
             )
     except Exception:
         pass
@@ -148,6 +194,7 @@ def listar_accesos_planta() -> tuple[list[dict], str | None]:
                 _campo(op, "usuario", "user"),
                 _campo(op, "clave", "password", "pass"),
                 _campo(op, "rol", default="operario"),
+                _campo(op, "nombre_planta", "planta", "nombre", default=""),
             )
     except Exception:
         pass
@@ -173,6 +220,18 @@ def listar_accesos_planta() -> tuple[list[dict], str | None]:
             "Guarde y recargue la app. En local use `.streamlit/secrets.toml`."
         )
     return unicos, None
+
+
+def listar_nombres_planta(accesos: list[dict] | None = None) -> list[str]:
+    """Nombres de planta distintos definidos en secrets (multi-planta)."""
+    if accesos is None:
+        accesos, _ = listar_accesos_planta()
+    nombres = []
+    for a in accesos or []:
+        p = str(a.get("planta") or "").strip()
+        if p and p not in nombres:
+            nombres.append(p)
+    return nombres
 
 
 def purgar_frio_local_ui(solo_rupturas: bool = False) -> dict:

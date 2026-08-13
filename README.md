@@ -44,6 +44,13 @@ KPIs del día (sellos ECC, lecturas/rupturas de frío, contenedores, cargas), **
 ### Mapeo de columnas y roles
 Si el Excel no trae LOTE/PESO/CALIBRE con esos nombres, se mapean en Resumen. Roles `supervisor` / `operario` en secrets (congelar lote solo supervisor).
 
+### Historial · móvil · balanza · multi-planta
+- **Historial:** frío, sellos ECC y bitácora en pantalla.
+- **Móvil · QR + frío:** modo sidebar liviano para piso.
+- **Balanza serial:** captura USB opcional (`pyserial`) en Módulo 1.
+- **CSV ERP:** al congelar el lote se genera packing limpio descargable.
+- **Multi-planta:** bloque `[plantas.*]` en secrets (nombre + usuario por planta).
+
 ### Avisos email (WhatsApp opcional)
 Opcional vía secrets `[avisos]`: al registrar ruptura de frío se notifica por correo SMTP; WhatsApp (CallMeBot/Twilio) cuando lo configure.
 

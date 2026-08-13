@@ -173,6 +173,13 @@ def registrar_peso_ultima_fila(df, peso):
     return df_out, True, col_peso
 
 
+def exportar_packing_csv_bytes(df) -> bytes:
+    """CSV limpio listo para ERP (UTF-8)."""
+    buf = io.BytesIO()
+    df.to_csv(buf, index=False)
+    return buf.getvalue()
+
+
 # Tabla destino en Supabase: public.historial_reportes
 SUPABASE_TABLA_SELLOS = "historial_reportes"
 # Solo estas columnas (minúsculas exactas, sin extras)

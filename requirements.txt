@@ -7,5 +7,7 @@ PyNaCl
 pypdf>=5.0.0
 Pillow
 pyzbar
+pyserial
+pytest
 maturin
 ./motor_rust

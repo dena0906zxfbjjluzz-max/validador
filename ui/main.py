@@ -12,13 +12,16 @@ import seguridad_cortafuego as firewall
 from ui.auth import (
     cargar_nombre_planta,
     listar_accesos_planta,
+    listar_nombres_planta,
 )
 from ui.style import pagina_ecc_style
 from ui.theme import apply_theme
 from ui.screens import alertas as screen_alertas
 from ui.screens import contenedores as screen_contenedores
 from ui.screens import dashboard as screen_dashboard
+from ui.screens import historial as screen_historial
 from ui.screens import inicio as screen_inicio
+from ui.screens import movil as screen_movil
 from ui.screens import operacion as screen_operacion
 from ui.screens import qr as screen_qr
 
@@ -44,7 +47,11 @@ def run() -> None:
     )
     modo_app = st.sidebar.radio(
         "Seleccione el módulo:",
-        ["Planta / Packing (login)", "Verificación pública ECC"],
+        [
+            "Planta / Packing (login)",
+            "Móvil · QR + frío",
+            "Verificación pública ECC",
+        ],
         index=0,
         key="nav_modo_app",
     )
@@ -59,6 +66,7 @@ def run() -> None:
         if st.sidebar.button("Cerrar sesión segura", key="btn_fw_logout"):
             firewall.cerrar_sesion(st.session_state, "logout_manual")
             st.session_state["rol_planta"] = None
+            st.session_state["nombre_planta_sesion"] = None
             st.rerun()
 
     # ---------- MÓDULO PÚBLICO: verificación de PDF firmado (sin login) ----------
@@ -191,12 +199,17 @@ def run() -> None:
             )
             if resultado_login.get("ok"):
                 st.session_state["rol_planta"] = resultado_login.get("rol") or "supervisor"
+                if resultado_login.get("planta"):
+                    st.session_state["nombre_planta_sesion"] = resultado_login["planta"]
                 st.success(resultado_login.get("mensaje") or "Acceso concedido.")
                 st.rerun()
             else:
                 st.error(resultado_login.get("mensaje") or "Credenciales incorrectas.")
                 if resultado_login.get("bloqueado"):
                     st.rerun()
+        _nombres_p = listar_nombres_planta(accesos_planta)
+        if _nombres_p:
+            st.caption("Plantas configuradas: " + " · ".join(_nombres_p))
         st.caption(f"Cortafuego · máx. {firewall.politica()['max_intentos']} intentos")
         st.stop()
 
@@ -219,8 +232,15 @@ def run() -> None:
 
     nombre_planta = cargar_nombre_planta()
     _plant_label = nombre_planta or "Planta Autorizada"
-    _fecha_hoy = datetime.date.today().strftime("%d/%m/%Y")
-    # El encabezado se dibuja después de resolver la pantalla activa (sidebar).
+
+    # Modo móvil: solo QR + frío (sin packing completo)
+    if modo_app == "Móvil · QR + frío":
+        st.sidebar.caption(f"Planta: {_plant_label}")
+        screen_movil.render(
+            producto_sel=st.session_state.get("dash_producto") or "Palta Hass",
+            auditor_nombre=st.session_state.get("dash_inspector") or "Control de Calidad",
+        )
+        st.stop()
 
     funciones.inicializar_base_datos()
 
@@ -295,6 +315,7 @@ def run() -> None:
             ("QR pallet", "qr", "nav_btn_qr"),
             ("Contenedores", "contenedores", "nav_btn_cnt"),
             ("Alertas", "alertas", "nav_btn_alertas"),
+            ("Historial", "historial", "nav_btn_historial"),
         ]
     )
 
@@ -444,6 +465,8 @@ def run() -> None:
             peso_min_caja=peso_min_caja,
             max_merma_permitida=max_merma_permitida,
         )
+    elif vista == "historial":
+        screen_historial.render()
     elif vista == "operacion" and st.session_state.get("df_trabajo") is not None:
         screen_operacion.render(
             archivo=archivo,

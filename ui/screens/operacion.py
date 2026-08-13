@@ -171,9 +171,38 @@ def render(
             # MÓDULO 1
             col_b1, col_b2 = st.columns(2)
             with col_b1:
-                peso_capturado = st.number_input("Peso neto (kg)", value=4.5, step=0.1)
+                if "balanza_peso_input" not in st.session_state:
+                    st.session_state["balanza_peso_input"] = 4.5
+                peso_capturado = st.number_input(
+                    "Peso neto (kg)",
+                    step=0.1,
+                    key="balanza_peso_input",
+                )
+                with st.expander("Balanza USB / serial", expanded=False):
+                    st.caption(
+                        "En PC local con pyserial. En Streamlit Cloud use captura manual."
+                    )
+                    puertos = funciones.listar_puertos_serial()
+                    puerto = st.selectbox(
+                        "Puerto",
+                        options=(puertos or ["COM3", "/dev/ttyUSB0"]),
+                        key="balanza_puerto",
+                    )
+                    baud = st.number_input("Baudrate", value=9600, step=100, key="balanza_baud")
+                    if st.button("Capturar desde balanza", key="balanza_capturar"):
+                        lec = funciones.leer_peso_serial(str(puerto), baudrate=int(baud))
+                        if lec.get("ok"):
+                            st.session_state["balanza_peso_input"] = float(lec["peso"])
+                            st.success(lec.get("mensaje"))
+                            st.rerun()
+                        else:
+                            st.warning(lec.get("mensaje") or "Sin lectura")
+                            if lec.get("crudo"):
+                                st.code(lec["crudo"])
                 if st.button("Registrar peso", type="primary"):
-                    df_nuevo, ok_peso, col_peso_usada = funciones.registrar_peso_ultima_fila(df_original, peso_capturado)
+                    df_nuevo, ok_peso, col_peso_usada = funciones.registrar_peso_ultima_fila(
+                        df_original, peso_capturado
+                    )
                     if ok_peso:
                         st.session_state["df_trabajo"] = df_nuevo
                         df_original = df_nuevo
@@ -185,10 +214,15 @@ def render(
                             str(peso_capturado),
                             auditor_nombre,
                         )
-                        st.success(f"Peso de {peso_capturado} kg registrado en la última fila (columna `{col_peso_usada}`).")
+                        st.success(
+                            f"Peso de {peso_capturado} kg registrado en la última fila "
+                            f"(columna `{col_peso_usada}`)."
+                        )
                         st.rerun()
                     else:
-                        st.error("No se encontró una columna de PESO en el archivo, o el archivo está vacío.")
+                        st.error(
+                            "No se encontró una columna de PESO en el archivo, o el archivo está vacío."
+                        )
             with col_b2:
                 sscc_input = st.text_input("SSCC / caja / pallet", placeholder="077512345678901234")
                 if sscc_input:
@@ -740,20 +774,44 @@ def render(
                         if st.button("🔒 Congelar y Aprobar Lote (Cierre Oficial)"):
                             if chk_pulpa and chk_cuerpo:
                                 st.session_state["lote_congelado"] = True
-                                st.success("¡Lote aprobado, firmado y congelado correctamente para gerencia!")
+                                try:
+                                    csv_bytes = funciones.exportar_packing_csv_bytes(df_original)
+                                    st.session_state["packing_csv_erp"] = csv_bytes
+                                    st.session_state["packing_csv_nombre"] = (
+                                        f"packing_ERP_{archivo.name.rsplit('.', 1)[0]}.csv"
+                                    )
+                                except Exception:
+                                    st.session_state["packing_csv_erp"] = None
+                                st.success(
+                                    "¡Lote aprobado y congelado! CSV listo para ERP abajo."
+                                )
                                 st.rerun()
                             else:
-                                st.error("⚠️ Debe marcar todas las verificaciones del checklist obligatorio antes de aprobar el lote.")
+                                st.error(
+                                    "⚠️ Debe marcar todas las verificaciones del checklist "
+                                    "obligatorio antes de aprobar el lote."
+                                )
                     else:
                         st.caption("Congelar/aprobar: solo supervisor.")
                 else:
                     if es_supervisor:
                         if st.button("🔓 Descongelar Lote (Habilitar Edición)"):
                             st.session_state["lote_congelado"] = False
+                            st.session_state.pop("packing_csv_erp", None)
                             st.warning("Lote habilitado para modificaciones.")
                             st.rerun()
                     else:
                         st.caption("Lote congelado. Solo un supervisor puede descongelarlo.")
+
+            if st.session_state.get("lote_congelado") and st.session_state.get("packing_csv_erp"):
+                st.download_button(
+                    "Descargar packing limpio (CSV ERP)",
+                    data=st.session_state["packing_csv_erp"],
+                    file_name=st.session_state.get("packing_csv_nombre") or "packing_ERP.csv",
+                    mime="text/csv",
+                    key="dl_packing_erp_congelado",
+                    type="primary",
+                )
 
             bitacora_db_data = funciones.cargar_bitacora_db()
             if bitacora_db_data:

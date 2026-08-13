@@ -509,14 +509,22 @@ def intentar_login_lista(
         if u_ok and credenciales_validas(usuario_in, clave_in, u_ok, c_ok):
             registrar_login_ok(session_state, usuario_in)
             session_state["rol_planta"] = rol
+            planta = str(cand.get("planta") or "").strip()
+            if planta:
+                session_state["nombre_planta_sesion"] = planta
             return {
                 "ok": True,
                 "bloqueado": False,
                 "segundos_bloqueo": 0,
-                "mensaje": f"✅ Acceso concedido · rol {rol}.",
+                "mensaje": (
+                    f"✅ Acceso concedido · rol {rol}"
+                    + (f" · {planta}" if planta else "")
+                    + "."
+                ),
                 "intentos": 0,
                 "max": politica()["max_intentos"],
                 "rol": rol,
+                "planta": planta or None,
             }
 
     info = registrar_fallo_login(session_state, usuario_in)

@@ -110,7 +110,15 @@ Abra el navegador en la URL que muestre la terminal (suele ser `http://localhost
 3. Si faltan LOTE/PESO/CALIBRE: **Mapear columnas del packing** en Resumen.
 4. Pruebe módulos (peso / LMR / caja / frío). Congelar lote solo con rol supervisor.
 5. Sello ECC al generar reporte; **Verificación pública ECC** con un PDF firmado.
-6. **Dashboard** → KPIs del turno + **Descargar PDF del turno**; pruebe alertas de frío.
+6. **Dashboard** → KPIs + PDF firmado; **Historial** para frío/sellos/bitácora.
+7. Modo sidebar **Móvil · QR + frío** para piso.
+8. Congelar lote (supervisor) → descarga **CSV ERP**.
+
+### Tests locales
+
+```bash
+pytest tests/test_smoke.py -q
+```
 
 ### Roles (opcional)
 
