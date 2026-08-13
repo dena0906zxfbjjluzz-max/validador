@@ -188,6 +188,28 @@ def listar_accesos_planta() -> tuple[list[dict], str | None]:
     return unicos, None
 
 
+def purgar_frio_local_ui(solo_rupturas: bool = False) -> dict:
+    """Llama a funciones.purgar_control_frio_local con recarga si Cloud quedó a medias."""
+    fn = getattr(funciones, "purgar_control_frio_local", None)
+    if fn is None:
+        try:
+            import importlib
+
+            importlib.reload(funciones)
+            fn = getattr(funciones, "purgar_control_frio_local", None)
+        except Exception:
+            fn = None
+    if fn is None:
+        return {
+            "ok": False,
+            "borradas": 0,
+            "mensaje": (
+                "Código desactualizado en Cloud. "
+                "Vaya a Manage app → Reboot y vuelva a intentar."
+            ),
+        }
+    return fn(solo_rupturas=solo_rupturas)
+
 
 def pagina_ecc_style(titulo: str, descripcion: str = ""):
     """Título limpio; descripción corta opcional (máx. una línea)."""
@@ -1496,13 +1518,13 @@ if vista == "dashboard":
             c_del1, c_del2 = st.columns(2)
             with c_del1:
                 if st.button("Borrar solo rupturas", key="dash_del_rupturas"):
-                    r = funciones.purgar_control_frio_local(solo_rupturas=True)
+                    r = purgar_frio_local_ui(solo_rupturas=True)
                     (st.success if r.get("ok") else st.error)(r.get("mensaje"))
                     if r.get("ok"):
                         st.rerun()
             with c_del2:
                 if st.button("Borrar todas las lecturas de frío", key="dash_del_frio_all"):
-                    r = funciones.purgar_control_frio_local(solo_rupturas=False)
+                    r = purgar_frio_local_ui(solo_rupturas=False)
                     (st.success if r.get("ok") else st.error)(r.get("mensaje"))
                     if r.get("ok"):
                         st.rerun()
@@ -2091,12 +2113,12 @@ if vista == "alertas":
                 "Supabase ≠ alertas de pantalla. Esta app usa `planta_calidad_prod.db`."
             )
             if st.button("Borrar rupturas locales", key="alertas_del_rupturas"):
-                r = funciones.purgar_control_frio_local(solo_rupturas=True)
+                r = purgar_frio_local_ui(solo_rupturas=True)
                 (st.success if r.get("ok") else st.error)(r.get("mensaje"))
                 if r.get("ok"):
                     st.rerun()
             if st.button("Borrar todo el frío local", key="alertas_del_frio_all"):
-                r = funciones.purgar_control_frio_local(solo_rupturas=False)
+                r = purgar_frio_local_ui(solo_rupturas=False)
                 (st.success if r.get("ok") else st.error)(r.get("mensaje"))
                 if r.get("ok"):
                     st.rerun()
