@@ -1353,6 +1353,37 @@ if vista == "dashboard":
     else:
         st.info("Sin rupturas recientes en la ventana de alerta.")
 
+    cfg_av = funciones._config_avisos()
+    st.caption(
+        "Avisos: "
+        + (
+            "email "
+            + ("✓" if cfg_av.get("email_ok") else "—")
+            + " · WhatsApp "
+            + ("✓" if cfg_av.get("whatsapp_ok") else "—")
+        )
+    )
+    if activas and cfg_av.get("habilitado"):
+        if st.button("Reenviar aviso de la última ruptura", key="dash_reenviar_aviso"):
+            ult = activas[0]
+            r = funciones.notificar_ruptura_frio(
+                {
+                    "camara": ult.get("camara"),
+                    "temperatura": ult.get("temperatura"),
+                    "temp_min": "?",
+                    "temp_max": "?",
+                    "producto": ult.get("producto"),
+                    "inspector": ult.get("inspector"),
+                    "hora_registro": ult.get("hora"),
+                    "estado": ult.get("estado"),
+                },
+                forzar=True,
+            )
+            if r.get("ok"):
+                st.success(r.get("mensaje"))
+            else:
+                st.warning(r.get("mensaje") or "No enviado")
+
     lotes = dash.get("lotes_sellados") or []
     with st.expander(f"Sellos ECC de hoy ({len(lotes)})"):
         if lotes:
@@ -2144,6 +2175,18 @@ if vista == "operacion" and st.session_state.get("df_trabajo") is not None:
                             st.success(resultado_frio["mensaje_ui"])
                         else:
                             st.error(resultado_frio["mensaje_ui"])
+                            av = resultado_frio.get("aviso") or {}
+                            if av.get("ok"):
+                                st.warning(f"📲 {av.get('mensaje')}")
+                            elif av.get("omitido"):
+                                st.caption(av.get("mensaje") or "")
+                            elif av.get("configurado") is False:
+                                st.caption(
+                                    "Avisos WA/email no configurados "
+                                    "(secrets [avisos])."
+                                )
+                            elif av.get("mensaje"):
+                                st.caption(av.get("mensaje"))
 
                         if resultado_frio.get("sqlite_ok"):
                             pass

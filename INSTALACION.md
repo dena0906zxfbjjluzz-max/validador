@@ -108,6 +108,16 @@ Abra el navegador en la URL que muestre la terminal (suele ser `http://localhost
 3. Pruebe Módulo 1 (peso / SSCC), 2 (LMR), 3 (caja), 4 (frío).
 4. Sello ECC al generar reporte; ver panel derecho **Criptografía** (modo `real` si hay `LLAVE_PRIVADA`).
 5. Barra lateral: **Verificación pública ECC** con un PDF firmado.
+6. **Dashboard** → KPIs del turno; registre frío fuera de rango para probar alertas.
+
+### Avisos WhatsApp / correo (opcional)
+
+En Streamlit Secrets agregue bloque `[avisos]` (ver `.streamlit/secrets.toml.example`):
+
+- **Email:** `email_to`, `smtp_user`, `smtp_pass` (Gmail: contraseña de aplicación).
+- **WhatsApp:** `whatsapp_to` + `callmebot_apikey` (CallMeBot) **o** Twilio (`twilio_sid`, `twilio_token`, `twilio_from`).
+
+Al registrar una **ruptura de frío**, el Validador intenta avisar (máx. 1 aviso / cámara / 30 min).
 
 ---
 
