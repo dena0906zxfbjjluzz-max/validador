@@ -1130,7 +1130,10 @@ if st.session_state.get("vista_planta") == "operacion" and not _tiene_lote:
 if st.session_state.get("modulo_nav") not in _MODULOS_OP:
     st.session_state["modulo_nav"] = "Resumen del lote"
 
-_nav_vistas = [("Inicio", "inicio", "nav_btn_inicio")]
+_nav_vistas = [
+    ("Inicio", "inicio", "nav_btn_inicio"),
+    ("Dashboard", "dashboard", "nav_btn_dashboard"),
+]
 if _tiene_lote:
     _nav_vistas.append(("Operación del lote", "operacion", "nav_btn_operacion"))
 _nav_vistas.extend(
@@ -1270,9 +1273,24 @@ modulo_nav = st.session_state.get("modulo_nav", "Resumen del lote")
 if vista == "inicio":
     pagina_ecc_style(_plant_label, "Cargue el packing en la barra lateral.")
 
+    _af_home = funciones.alertas_frio_activas(limite=5, horas_ventana=12)
+    if _af_home.get("nivel") == "CRITICO":
+        st.error(_af_home.get("mensaje"))
+        if st.button("Ver dashboard de turno", key="btn_home_dash_crit"):
+            st.session_state["vista_planta"] = "dashboard"
+            st.rerun()
+    elif _af_home.get("nivel") == "ALERTA":
+        st.warning(_af_home.get("mensaje"))
+        if st.button("Ver dashboard de turno", key="btn_home_dash_alerta"):
+            st.session_state["vista_planta"] = "dashboard"
+            st.rerun()
+
     c1, c2 = st.columns(2)
     with c1:
-        if st.button("QR pallet", type="primary", key="tile_qr", use_container_width=True):
+        if st.button("Dashboard de turno", type="primary", key="tile_dash", use_container_width=True):
+            st.session_state["vista_planta"] = "dashboard"
+            st.rerun()
+        if st.button("QR pallet", key="tile_qr", use_container_width=True):
             st.session_state["vista_planta"] = "qr"
             st.rerun()
         if st.button("Contenedores", key="tile_cnt", use_container_width=True):
@@ -1290,6 +1308,57 @@ if vista == "inicio":
 
     if st.session_state.get("df_trabajo") is not None:
         st.success(f"Lote activo: **{st.session_state.get('nombre_archivo', 'archivo')}**")
+
+# ─── Dashboard de turno + alertas de frío ─────────────────────────────────────
+if vista == "dashboard":
+    dash = funciones.resumen_dashboard_turno()
+    pagina_ecc_style("Dashboard de turno", f"Resumen del {dash.get('fecha')} · frío y sellos ECC")
+
+    estado = dash.get("estado_turno")
+    if estado == "CRITICO":
+        st.error(f"Estado del turno: {estado}")
+    elif estado == "VIGILANCIA":
+        st.warning(f"Estado del turno: {estado}")
+    else:
+        st.success(f"Estado del turno: {estado}")
+
+    k = dash.get("kpis") or {}
+    m1, m2, m3, m4, m5 = st.columns(5)
+    m1.metric("Sellos ECC hoy", k.get("sellos_ecc", 0))
+    m2.metric("Lecturas frío hoy", k.get("lecturas_frio", 0))
+    m3.metric("Rupturas frío hoy", k.get("rupturas_frio", 0))
+    m4.metric("Contenedores", k.get("contenedores", 0))
+    m5.metric("Cargas packing", k.get("cargas_packing", 0))
+
+    st.markdown("---")
+    st.subheader("Alertas de frío activas")
+    af = dash.get("alertas_frio") or {}
+    st.caption(af.get("mensaje") or "")
+    activas = af.get("activas") or []
+    if activas:
+        st.dataframe(pd.DataFrame(activas), width="stretch", hide_index=True)
+        b1, b2 = st.columns(2)
+        with b1:
+            if st.button("Ir a cadena de frío", key="dash_ir_frio", use_container_width=True):
+                if st.session_state.get("df_trabajo") is not None:
+                    st.session_state["vista_planta"] = "operacion"
+                    st.session_state["modulo_nav"] = "4 · Cadena de frío"
+                else:
+                    st.session_state["vista_planta"] = "alertas"
+                st.rerun()
+        with b2:
+            if st.button("Ver tendencias", key="dash_ir_alertas", use_container_width=True):
+                st.session_state["vista_planta"] = "alertas"
+                st.rerun()
+    else:
+        st.info("Sin rupturas recientes en la ventana de alerta.")
+
+    lotes = dash.get("lotes_sellados") or []
+    with st.expander(f"Sellos ECC de hoy ({len(lotes)})"):
+        if lotes:
+            st.dataframe(pd.DataFrame(lotes), width="stretch", hide_index=True)
+        else:
+            st.caption("Aún no hay sellos archivados hoy.")
 
 if vista == "qr":
     col_cen = st.container()

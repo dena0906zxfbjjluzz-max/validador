@@ -2913,3 +2913,211 @@ def consolidar_inteligencia_planta(
         "frio": frio,
         "packing": packing,
     }
+
+
+# ─── Dashboard de turno + alertas de frío activas ─────────────────────────────
+
+
+def _parse_fecha_hora_flexible(valor) -> datetime.datetime | None:
+    if valor is None:
+        return None
+    s = str(valor).strip()
+    if not s:
+        return None
+    for fmt in (
+        "%Y-%m-%d %H:%M:%S",
+        "%Y-%m-%d %H:%M",
+        "%Y-%m-%d",
+        "%d/%m/%Y %H:%M:%S",
+        "%d/%m/%Y %H:%M",
+        "%H:%M:%S",
+    ):
+        try:
+            dt = datetime.datetime.strptime(s, fmt)
+            if fmt == "%H:%M:%S":
+                hoy = datetime.date.today()
+                return datetime.datetime.combine(hoy, dt.time())
+            return dt
+        except ValueError:
+            continue
+    try:
+        return pd.to_datetime(s, errors="coerce").to_pydatetime()
+    except Exception:
+        return None
+
+
+def alertas_frio_activas(limite: int = 30, horas_ventana: int = 12) -> dict:
+    """
+    Rupturas de cadena de frío recientes que requieren atención del turno.
+    """
+    inicializar_base_datos()
+    df = cargar_frio_dataframe(limite=max(limite * 3, 100))
+    if df.empty:
+        return {
+            "ok": True,
+            "activas": [],
+            "total": 0,
+            "nivel": "ESTABLE",
+            "mensaje": "Sin lecturas de frío registradas.",
+        }
+
+    es_ruptura = df["estado"].astype(str).str.upper().str.contains("RUPTURA", na=False)
+    rupturas = df.loc[es_ruptura].copy()
+    if rupturas.empty:
+        return {
+            "ok": True,
+            "activas": [],
+            "total": 0,
+            "nivel": "ESTABLE",
+            "mensaje": "Sin rupturas de frío en el historial reciente.",
+        }
+
+    ahora = datetime.datetime.now()
+    corte = ahora - datetime.timedelta(hours=int(horas_ventana))
+    activas = []
+    for _, row in rupturas.iterrows():
+        dt = _parse_fecha_hora_flexible(row.get("hora_registro"))
+        if dt is not None and dt < corte:
+            continue
+        activas.append(
+            {
+                "camara": str(row.get("camara") or "N/D"),
+                "temperatura": row.get("temperatura"),
+                "hora": str(row.get("hora_registro") or ""),
+                "producto": str(row.get("producto") or ""),
+                "inspector": str(row.get("inspector") or ""),
+                "estado": str(row.get("estado") or ""),
+            }
+        )
+        if len(activas) >= limite:
+            break
+
+    total = len(activas)
+    if total >= 3:
+        nivel = "CRITICO"
+        mensaje = f"{total} rupturas de frío en las últimas {horas_ventana} h."
+    elif total >= 1:
+        nivel = "ALERTA"
+        mensaje = f"{total} ruptura(s) de frío reciente(s)."
+    else:
+        nivel = "ESTABLE"
+        mensaje = f"Sin rupturas en las últimas {horas_ventana} h."
+
+    return {
+        "ok": True,
+        "activas": activas,
+        "total": total,
+        "nivel": nivel,
+        "mensaje": mensaje,
+        "horas_ventana": horas_ventana,
+    }
+
+
+def resumen_dashboard_turno(fecha: datetime.date | None = None) -> dict:
+    """
+    KPIs del turno / día para el jefe de planta:
+    sellos ECC, rupturas de frío, contenedores, cargas de packing.
+    """
+    inicializar_base_datos()
+    dia = fecha or datetime.date.today()
+    dia_str = dia.strftime("%Y-%m-%d")
+    conn = _conectar_db()
+
+    def _count_like(sql: str, params=()):
+        try:
+            cur = conn.execute(sql, params)
+            row = cur.fetchone()
+            return int(row[0] if row and row[0] is not None else 0)
+        except Exception:
+            return 0
+
+    # historial_reportes: fecha_hora suele ser 'YYYY-MM-DD HH:MM:SS'
+    sellos_hoy = _count_like(
+        "SELECT COUNT(*) FROM historial_reportes WHERE substr(fecha_hora, 1, 10) = ?",
+        (dia_str,),
+    )
+    # control_frio
+    lecturas_hoy = _count_like(
+        "SELECT COUNT(*) FROM control_frio WHERE substr(hora_registro, 1, 10) = ?",
+        (dia_str,),
+    )
+    rupturas_hoy = _count_like(
+        """
+        SELECT COUNT(*) FROM control_frio
+        WHERE substr(hora_registro, 1, 10) = ?
+          AND upper(COALESCE(estado, '')) LIKE '%RUPTURA%'
+        """,
+        (dia_str,),
+    )
+    # Si hora_registro solo trae HH:MM:SS, contar por id reciente del día vía fallback
+    if lecturas_hoy == 0:
+        try:
+            df_f = pd.read_sql_query(
+                "SELECT hora_registro, estado FROM control_frio ORDER BY id DESC LIMIT 200",
+                conn,
+            )
+            n_lec = 0
+            n_rup = 0
+            for _, r in df_f.iterrows():
+                dt = _parse_fecha_hora_flexible(r.get("hora_registro"))
+                if dt is None or dt.date() != dia:
+                    continue
+                n_lec += 1
+                if "RUPTURA" in str(r.get("estado") or "").upper():
+                    n_rup += 1
+            lecturas_hoy = n_lec
+            rupturas_hoy = n_rup
+        except Exception:
+            pass
+
+    contenedores_hoy = _count_like("SELECT COUNT(*) FROM contenedores_despacho")
+    # No hay fecha en contenedores: mostrar total reciente (últimos IDs del día no aplica)
+    try:
+        contenedores_total = _count_like("SELECT COUNT(*) FROM contenedores_despacho")
+    except Exception:
+        contenedores_total = 0
+
+    cargas_packing = _count_like("SELECT COUNT(*) FROM historial_sesion")
+
+    lotes_sellados = []
+    try:
+        df_s = pd.read_sql_query(
+            """
+            SELECT fecha_hora, lote, responsable, producto, registros
+            FROM historial_reportes
+            WHERE substr(fecha_hora, 1, 10) = ?
+            ORDER BY id DESC
+            LIMIT 15
+            """,
+            conn,
+            params=(dia_str,),
+        )
+        lotes_sellados = df_s.to_dict("records") if not df_s.empty else []
+    except Exception:
+        lotes_sellados = []
+
+    conn.close()
+
+    frio = alertas_frio_activas(limite=10, horas_ventana=12)
+
+    if frio["nivel"] == "CRITICO" or rupturas_hoy >= 3:
+        estado_turno = "CRITICO"
+    elif frio["nivel"] == "ALERTA" or rupturas_hoy >= 1:
+        estado_turno = "VIGILANCIA"
+    else:
+        estado_turno = "ESTABLE"
+
+    return {
+        "ok": True,
+        "fecha": dia_str,
+        "estado_turno": estado_turno,
+        "kpis": {
+            "sellos_ecc": sellos_hoy,
+            "lecturas_frio": lecturas_hoy,
+            "rupturas_frio": rupturas_hoy,
+            "contenedores": contenedores_total,
+            "cargas_packing": cargas_packing,
+        },
+        "lotes_sellados": lotes_sellados,
+        "alertas_frio": frio,
+    }

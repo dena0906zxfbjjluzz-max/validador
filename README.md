@@ -28,6 +28,9 @@ Cámara / foto / texto → consulta `historial_reportes` en Supabase.
 ### 7 · Alertas y tendencias
 Inteligencia operativa de planta: reglas + z-score sobre cadena de frío (SQLite) y el packing cargado (pesos atípicos, LMR por productor, merma). Anticipa rupturas y patrones de riesgo sin modelos externos.
 
+### Dashboard de turno
+KPIs del día (sellos ECC, lecturas/rupturas de frío, contenedores, cargas) y **alertas de frío activas** (últimas horas) para el jefe de planta.
+
 ### Seguridad (cortafuego)
 Login con bloqueo, token de sesión, timeout, validación de uploads y bitácora local.
 
