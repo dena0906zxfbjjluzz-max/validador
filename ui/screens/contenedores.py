@@ -52,7 +52,7 @@ def _cnt_aplicar_prefill(pl=None, reg=None):
         st.session_state["cnt_form_psenasa"] = psenasa
 
 
-def render():
+def render(*, mercado_destino: str = "Europa (GlobalGAP/UE)"):
     pagina_ecc_style("Contenedores", "Booking · ISO 6346 · precintos")
     with st.container():
 

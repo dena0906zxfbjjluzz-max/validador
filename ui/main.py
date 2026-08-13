@@ -472,7 +472,7 @@ def run() -> None:
     elif vista == "qr":
         screen_qr.render()
     elif vista == "contenedores":
-        screen_contenedores.render()
+        screen_contenedores.render(mercado_destino=mercado_destino)
     elif vista == "alertas":
         screen_alertas.render(
             es_supervisor=_es_supervisor,
