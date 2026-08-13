@@ -73,11 +73,27 @@ from planta.balanza import (  # noqa: F401
     listar_puertos_serial,
     parsear_peso_desde_texto,
 )
+from planta.cola_sync import (  # noqa: F401
+    encolar_sync,
+    listar_cola_sync,
+    procesar_cola_sync,
+)
+from planta.demo import sembrar_datos_demo  # noqa: F401
+from planta.informe import (  # noqa: F401
+    consolidar_informe_semanal,
+    enviar_informe_semanal_email,
+)
 from planta.pdfs import (  # noqa: F401
     extraer_sello_ecc_pdf,
     generar_pdf_dashboard_turno,
     generar_pdf_errores,
+    generar_pdf_informe_semanal,
     generar_pdf_resumen,
+)
+from planta.usuarios import (  # noqa: F401
+    crear_usuario_local,
+    desactivar_usuario_local,
+    listar_usuarios_local,
 )
 from planta.qr_pallet import (  # noqa: F401
     construir_payload_qr,

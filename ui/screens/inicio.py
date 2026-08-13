@@ -21,10 +21,10 @@ def render(*, plant_label: str, es_supervisor: bool = False):
     st.markdown(
         f"""
         <section class="vx-home-hero">
-          <p class="vx-home-kicker">Suite de planta · packing &amp; frío</p>
+          <p class="vx-home-kicker">Suite de planta · packing y cadena de frío</p>
           <h1 class="vx-page-title">{_pl}</h1>
           <p class="vx-page-desc">
-            Calidad, trazabilidad y cadena de frío en un solo espacio de trabajo.
+            Espacio de trabajo para jefe de turno y línea: calidad, pallets y cámaras.
             Cargue el packing en la barra lateral para operar el lote.
           </p>
         </section>
@@ -46,19 +46,26 @@ def render(*, plant_label: str, es_supervisor: bool = False):
 
     c1, c2 = st.columns(2)
     with c1:
-        if st.button("Dashboard de turno", type="primary", key="tile_dash", use_container_width=True):
+        if st.button("Panel del turno", type="primary", key="tile_dash", use_container_width=True):
             st.session_state["vista_planta"] = "dashboard"
             st.rerun()
-        if st.button("QR pallet", key="tile_qr", use_container_width=True):
+        if st.button("Escanear pallet", key="tile_qr", use_container_width=True):
             st.session_state["vista_planta"] = "qr"
             st.rerun()
         if st.button("Contenedores", key="tile_cnt", use_container_width=True):
             st.session_state["vista_planta"] = "contenedores"
             st.rerun()
     with c2:
-        if st.button("Alertas", key="tile_alertas", use_container_width=True):
+        if st.button("Alertas de planta", key="tile_alertas", use_container_width=True):
             st.session_state["vista_planta"] = "alertas"
             st.rerun()
+        if st.button("Historial", key="tile_hist", use_container_width=True):
+            st.session_state["vista_planta"] = "historial"
+            st.rerun()
+        if es_supervisor:
+            if st.button("Usuarios de línea", key="tile_users", use_container_width=True):
+                st.session_state["vista_planta"] = "admin_usuarios"
+                st.rerun()
         if st.session_state.get("df_trabajo") is not None:
             if st.button("Operación del lote", type="primary", key="btn_ir_operacion", use_container_width=True):
                 st.session_state["vista_planta"] = "operacion"

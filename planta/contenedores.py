@@ -20,13 +20,18 @@ def guardar_contenedor_db(booking, contenedor, p_linea, p_senasa, destino, estad
     inicializar_base_datos()
     conn = _conectar_db()
     cursor = conn.cursor()
+    try:
+        cursor.execute("ALTER TABLE contenedores_despacho ADD COLUMN fecha TEXT")
+    except sqlite3.OperationalError:
+        pass
+    fecha = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     cursor.execute(
         """
         INSERT INTO contenedores_despacho
-            (booking, contenedor, precinto_linea, precinto_senasa, destino, estado)
-        VALUES (?, ?, ?, ?, ?, ?)
+            (booking, contenedor, precinto_linea, precinto_senasa, destino, estado, fecha)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
         """,
-        (booking, contenedor, p_linea, p_senasa, destino, estado),
+        (booking, contenedor, p_linea, p_senasa, destino, estado, fecha),
     )
     conn.commit()
     new_id = cursor.lastrowid
@@ -561,6 +566,20 @@ def registrar_contenedor_despacho(
         sb = enviar_contenedor_supabase(registro)
     except Exception as e:
         sb = {"ok": False, "configurado": True, "mensaje": f"{type(e).__name__}: {e}"}
+
+    if not sb.get("ok") and not sb.get("ya_existia") and sb.get("configurado") is not False:
+        try:
+            from planta.cola_sync import encolar_sync
+
+            encolar_sync(
+                "contenedor",
+                registro,
+                error=str(sb.get("mensaje") or "fallo supabase"),
+            )
+            sb = dict(sb)
+            sb["encolado"] = True
+        except Exception:
+            pass
 
     return {
         "ok": True,

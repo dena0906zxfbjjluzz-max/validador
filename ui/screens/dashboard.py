@@ -16,7 +16,7 @@ from ui.style import pagina_ecc_style
 
 def render(*, plant_label: str, rol_label: str, es_supervisor: bool):
     dash = funciones.resumen_dashboard_turno()
-    pagina_ecc_style("Dashboard de turno", f"Resumen del {dash.get('fecha')} · frío y sellos ECC")
+    pagina_ecc_style("Panel del turno", f"Resumen del {dash.get('fecha')} · frío y sellos")
 
     estado = dash.get("estado_turno")
     if estado == "CRITICO":
@@ -154,3 +154,62 @@ def render(*, plant_label: str, rol_label: str, es_supervisor: bool):
         key="dl_pdf_dashboard_turno",
         type="primary",
     )
+
+    st.markdown("---")
+    st.subheader("Informe semanal")
+    informe = funciones.consolidar_informe_semanal(7)
+    ik = informe.get("kpis") or {}
+    st.caption(
+        f"{informe.get('desde')} → {informe.get('hasta')} · estado {informe.get('estado')} · "
+        f"rupturas {ik.get('rupturas_frio', 0)} · sellos {ik.get('sellos_ecc', 0)}"
+    )
+    pdf_sem = funciones.generar_pdf_informe_semanal(
+        informe, planta_nombre=plant_label, inspector=_insp_dash
+    )
+    # reportlab puede devolver BytesIO
+    pdf_sem_bytes = pdf_sem.getvalue() if hasattr(pdf_sem, "getvalue") else pdf_sem
+    c_sem1, c_sem2 = st.columns(2)
+    with c_sem1:
+        st.download_button(
+            "Descargar informe semanal (PDF)",
+            data=pdf_sem_bytes,
+            file_name=f"informe_semanal_{informe.get('hasta', 'hoy')}.pdf",
+            mime="application/pdf",
+            key="dl_pdf_informe_semanal",
+        )
+    with c_sem2:
+        if es_supervisor:
+            if st.button("Enviar informe por correo", key="btn_email_informe_sem"):
+                r_mail = funciones.enviar_informe_semanal_email(
+                    informe, pdf_bytes=pdf_sem_bytes, planta=plant_label
+                )
+                (st.success if r_mail.get("ok") else st.warning)(r_mail.get("mensaje"))
+
+    if es_supervisor:
+        st.markdown("---")
+        st.subheader("Cola offline (nube)")
+        cola = funciones.listar_cola_sync(30)
+        st.caption(f"Pendientes: {len(cola)}")
+        if cola:
+            st.dataframe(
+                pd.DataFrame(
+                    [
+                        {
+                            "id": x["id"],
+                            "tipo": x["tipo"],
+                            "intentos": x["intentos"],
+                            "error": (x.get("ultimo_error") or "")[:80],
+                            "creado": x.get("creado_en"),
+                        }
+                        for x in cola
+                    ]
+                ),
+                width="stretch",
+                hide_index=True,
+            )
+        if st.button("Sincronizar cola ahora", key="btn_flush_cola_sync"):
+            r_sync = funciones.procesar_cola_sync(40)
+            (st.success if r_sync.get("ok") else st.warning)(r_sync.get("mensaje"))
+            if r_sync.get("procesados"):
+                st.rerun()
+

@@ -509,8 +509,23 @@ def intentar_login_lista(
         u_ok = str(cand.get("usuario") or "").strip()
         c_ok = str(cand.get("clave") or "")
         rol = normalizar_rol(cand.get("rol"))
-        if u_ok and credenciales_validas(usuario_in, clave_in, u_ok, c_ok):
+        es_hash = bool(cand.get("clave_es_hash"))
+        if es_hash:
+            try:
+                from planta.usuarios import verificar_clave_local
+
+                clave_match = verificar_clave_local(clave_in, c_ok, True)
+            except Exception:
+                clave_match = False
+            user_match = comparar_secretos(
+                sanitizar_texto(usuario_in, 120), sanitizar_texto(u_ok, 120)
+            )
+            ok_login = bool(user_match and clave_match)
+        else:
+            ok_login = bool(u_ok and credenciales_validas(usuario_in, clave_in, u_ok, c_ok))
+        if ok_login:
             planta = str(cand.get("planta") or "").strip()
+            email = str(cand.get("email") or "").strip()
             if abrir_sesion:
                 registrar_login_ok(session_state, usuario_in)
                 session_state["rol_planta"] = rol
@@ -533,6 +548,7 @@ def intentar_login_lista(
                 "rol": rol,
                 "planta": planta or None,
                 "usuario": usuario_in,
+                "email": email or None,
             }
 
     info = registrar_fallo_login(session_state, usuario_in)
@@ -633,10 +649,12 @@ def iniciar_otp_pendiente(
     rol: str,
     planta: str = "",
     minutos: int = 10,
+    email_destino: str = "",
 ) -> dict:
     """
     Genera OTP de 6 dígitos, lo guarda hasheado en sesión y lo envía por email.
     No abre sesión aún.
+    Prioridad destino: email_destino (usuario) > seguridad.otp_email > avisos.email_to.
     """
     _init_state(session_state)
     codigo = f"{secrets.randbelow(1_000_000):06d}"
@@ -650,12 +668,15 @@ def iniciar_otp_pendiente(
     session_state["otp_planta"] = str(planta or "").strip()
     session_state["autenticado"] = False
 
-    destino = otp_email_destino()
+    destino = str(email_destino or "").strip() or otp_email_destino()
     if not destino:
         limpiar_otp_pendiente(session_state)
         return {
             "ok": False,
-            "mensaje": "OTP activo pero falta email destino (seguridad.otp_email o avisos.email_to).",
+            "mensaje": (
+                "OTP activo pero falta email destino "
+                "(email del usuario, seguridad.otp_email o avisos.email_to)."
+            ),
         }
 
     try:

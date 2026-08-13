@@ -93,7 +93,7 @@ def listar_accesos_planta() -> tuple[list[dict], str | None]:
                 pass
         return default
 
-    def _push(usuario, clave, rol, planta=""):
+    def _push(usuario, clave, rol, planta="", email="", clave_es_hash=False):
         u = str(usuario or "").strip()
         c = str(clave or "")
         if not u or not c:
@@ -104,6 +104,8 @@ def listar_accesos_planta() -> tuple[list[dict], str | None]:
                 "clave": c,
                 "rol": firewall.normalizar_rol(rol),
                 "planta": str(planta or "").strip(),
+                "email": str(email or "").strip(),
+                "clave_es_hash": bool(clave_es_hash),
             }
         )
 
@@ -119,6 +121,7 @@ def listar_accesos_planta() -> tuple[list[dict], str | None]:
                             _campo(item, "clave", "password", "pass"),
                             _campo(item, "rol", default="supervisor"),
                             _campo(item, "nombre", "nombre_planta", "planta", default=""),
+                            _campo(item, "email", "correo", default=""),
                         )
                     except Exception:
                         pass
@@ -135,6 +138,7 @@ def listar_accesos_planta() -> tuple[list[dict], str | None]:
                                 _campo(item, "clave", "password", "pass"),
                                 _campo(item, "rol", default="supervisor"),
                                 nom,
+                                _campo(item, "email", "correo", default=""),
                             )
                         except Exception:
                             pass
@@ -154,6 +158,7 @@ def listar_accesos_planta() -> tuple[list[dict], str | None]:
                             _campo(item, "clave", "password", "pass"),
                             _campo(item, "rol", default="supervisor"),
                             _campo(item, "planta", "nombre_planta", "nombre", default=""),
+                            _campo(item, "email", "correo", default=""),
                         )
                     except Exception:
                         pass
@@ -167,6 +172,7 @@ def listar_accesos_planta() -> tuple[list[dict], str | None]:
                                 _campo(item, "clave", "password", "pass"),
                                 _campo(item, "rol", default="supervisor"),
                                 _campo(item, "planta", "nombre_planta", "nombre", default=""),
+                                _campo(item, "email", "correo", default=""),
                             )
                         except Exception:
                             pass
@@ -183,6 +189,7 @@ def listar_accesos_planta() -> tuple[list[dict], str | None]:
                 _campo(creds, "clave", "password", "pass"),
                 _campo(creds, "rol", default="supervisor"),
                 _campo(creds, "nombre_planta", "planta", "nombre", default=""),
+                _campo(creds, "email", "correo", default=""),
             )
     except Exception:
         pass
@@ -195,6 +202,23 @@ def listar_accesos_planta() -> tuple[list[dict], str | None]:
                 _campo(op, "clave", "password", "pass"),
                 _campo(op, "rol", default="operario"),
                 _campo(op, "nombre_planta", "planta", "nombre", default=""),
+                _campo(op, "email", "correo", default=""),
+            )
+    except Exception:
+        pass
+
+    # Usuarios locales (SQLite) — secrets gana si mismo usuario
+    try:
+        from planta.usuarios import accesos_desde_sqlite
+
+        for loc in accesos_desde_sqlite():
+            _push(
+                loc.get("usuario"),
+                loc.get("clave"),
+                loc.get("rol"),
+                loc.get("planta"),
+                loc.get("email"),
+                clave_es_hash=True,
             )
     except Exception:
         pass
@@ -211,7 +235,7 @@ def listar_accesos_planta() -> tuple[list[dict], str | None]:
 
     if not unicos:
         return [], (
-            "No se encontraron credenciales en **Streamlit Secrets**.\n\n"
+            "No se encontraron credenciales en **Streamlit Secrets** ni usuarios locales.\n\n"
             "En la nube: menú ⋮ de la app → **Settings** → **Secrets** → pegue:\n\n"
             "[credenciales]\n"
             'usuario = "su_usuario"\n'
@@ -220,6 +244,28 @@ def listar_accesos_planta() -> tuple[list[dict], str | None]:
             "Guarde y recargue la app. En local use `.streamlit/secrets.toml`."
         )
     return unicos, None
+
+
+def modo_demo_activo() -> bool:
+    """[demo] activo = true en secrets, o usuario de sesión 'demo'."""
+    try:
+        demo = st.secrets.get("demo")
+        if demo is not None:
+            try:
+                flag = str(demo.get("activo", demo.get("enabled", ""))).strip().lower()
+            except Exception:
+                flag = str(demo).strip().lower() if not hasattr(demo, "get") else ""
+            if flag in ("1", "true", "yes", "on", "si", "sí"):
+                return True
+    except Exception:
+        pass
+    try:
+        u = str(st.session_state.get("fw_usuario") or "").strip().lower()
+        if u == "demo":
+            return True
+    except Exception:
+        pass
+    return False
 
 
 def listar_nombres_planta(accesos: list[dict] | None = None) -> list[str]:

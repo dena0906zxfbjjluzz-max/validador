@@ -76,7 +76,8 @@ def inicializar_base_datos():
             precinto_linea TEXT,
             precinto_senasa TEXT,
             destino TEXT,
-            estado TEXT
+            estado TEXT,
+            fecha TEXT
         )
     """)
     cursor.execute("""
@@ -100,13 +101,48 @@ def inicializar_base_datos():
         "CREATE INDEX IF NOT EXISTS idx_historial_reportes_fecha ON historial_reportes(fecha_hora DESC)"
     )
     cursor.execute(
-        "CREATE INDEX IF NOT EXISTS idx_bitacora_fecha ON bitacora_cambios(fecha_hora)"
+        "CREATE INDEX IF NOT EXISTS idx_bitacora_fecha ON bitacora_cambios(fecha_hora DESC)"
+    )
+    cursor.execute(
+        """
+        CREATE TABLE IF NOT EXISTS usuarios_planta (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            usuario TEXT NOT NULL UNIQUE,
+            clave TEXT NOT NULL,
+            rol TEXT NOT NULL DEFAULT 'operario',
+            planta TEXT DEFAULT '',
+            email TEXT DEFAULT '',
+            activo INTEGER NOT NULL DEFAULT 1,
+            creado_en TEXT
+        )
+        """
+    )
+    cursor.execute(
+        """
+        CREATE TABLE IF NOT EXISTS cola_sync (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            tipo TEXT NOT NULL,
+            payload_json TEXT NOT NULL,
+            intentos INTEGER NOT NULL DEFAULT 0,
+            ultimo_error TEXT,
+            creado_en TEXT NOT NULL,
+            estado TEXT NOT NULL DEFAULT 'pendiente'
+        )
+        """
     )
 
     # Solo en bases antiguas con esquema incompleto (no aplica a archivos nuevos)
     if not es_nueva:
         try:
             cursor.execute("ALTER TABLE control_frio ADD COLUMN inspector TEXT")
+        except sqlite3.OperationalError:
+            pass
+        try:
+            cursor.execute("ALTER TABLE control_frio ADD COLUMN producto TEXT")
+        except sqlite3.OperationalError:
+            pass
+        try:
+            cursor.execute("ALTER TABLE contenedores_despacho ADD COLUMN fecha TEXT")
         except sqlite3.OperationalError:
             pass
         try:

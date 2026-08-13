@@ -42,3 +42,22 @@ def test_dashboard_resumen_ok():
 def test_hash_reporte():
     h = funciones.calcular_hash_reporte("msg", "sig", "pub")
     assert len(h) == 64
+
+
+def test_informe_semanal_y_cola():
+    info = funciones.consolidar_informe_semanal(7)
+    assert info.get("ok") is True
+    assert "kpis" in info
+    pdf = funciones.generar_pdf_informe_semanal(info, planta_nombre="Test")
+    raw = pdf.getvalue() if hasattr(pdf, "getvalue") else pdf
+    assert raw[:4] == b"%PDF"
+    cola = funciones.listar_cola_sync(5)
+    assert isinstance(cola, list)
+
+
+def test_usuarios_hash_local():
+    from planta.usuarios import _hash_clave, verificar_clave_local
+
+    h = _hash_clave("secreto")
+    assert verificar_clave_local("secreto", h, True)
+    assert not verificar_clave_local("otra", h, True)

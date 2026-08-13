@@ -13,9 +13,11 @@ from ui.auth import (
     cargar_nombre_planta,
     listar_accesos_planta,
     listar_nombres_planta,
+    modo_demo_activo,
 )
 from ui.style import pagina_ecc_style, sidebar_brand
 from ui.theme import apply_theme
+from ui.screens import admin_usuarios as screen_admin_usuarios
 from ui.screens import alertas as screen_alertas
 from ui.screens import contenedores as screen_contenedores
 from ui.screens import dashboard as screen_dashboard
@@ -67,6 +69,11 @@ def run() -> None:
         ],
         index=0,
         key="nav_modo_app",
+        format_func=lambda x: {
+            "Planta / Packing (login)": "Planta · jefe / línea",
+            "Móvil · QR + frío": "Celular · escanear + frío",
+            "Verificación pública ECC": "Público · verificar PDF",
+        }.get(x, x),
     )
 
     # Cortafuego: cerrar sesión (solo si autenticado) — detalle ya va en marca lateral
@@ -252,6 +259,7 @@ def run() -> None:
                             usuario=resultado_login.get("usuario") or usuarioInput,
                             rol=rol_ok,
                             planta=resultado_login.get("planta") or "",
+                            email_destino=resultado_login.get("email") or "",
                         )
                         if envio.get("ok"):
                             st.session_state["otp_mensaje_ui"] = envio.get("mensaje")
@@ -323,6 +331,15 @@ def run() -> None:
 
     funciones.inicializar_base_datos()
 
+    if modo_demo_activo() and not st.session_state.get("_demo_seed_done"):
+        try:
+            r_demo = funciones.sembrar_datos_demo(forzar=False)
+            st.session_state["_demo_seed_done"] = True
+            if r_demo.get("sembrado"):
+                st.toast(r_demo.get("mensaje") or "Demo cargada")
+        except Exception:
+            st.session_state["_demo_seed_done"] = True
+
     if "lote_congelado" not in st.session_state:
         st.session_state["lote_congelado"] = False
 
@@ -385,18 +402,20 @@ def run() -> None:
 
     _nav_vistas = [
         ("Inicio", "inicio", "nav_btn_inicio"),
-        ("Dashboard", "dashboard", "nav_btn_dashboard"),
+        ("Panel del turno", "dashboard", "nav_btn_dashboard"),
     ]
     if _tiene_lote:
         _nav_vistas.append(("Operación del lote", "operacion", "nav_btn_operacion"))
     _nav_vistas.extend(
         [
-            ("QR pallet", "qr", "nav_btn_qr"),
+            ("Escanear pallet", "qr", "nav_btn_qr"),
             ("Contenedores", "contenedores", "nav_btn_cnt"),
-            ("Alertas", "alertas", "nav_btn_alertas"),
+            ("Alertas de planta", "alertas", "nav_btn_alertas"),
             ("Historial", "historial", "nav_btn_historial"),
         ]
     )
+    if _es_supervisor:
+        _nav_vistas.append(("Usuarios de línea", "admin_usuarios", "nav_btn_usuarios"))
 
     for _lab, _vid, _key in _nav_vistas:
         _active = st.session_state.get("vista_planta") == _vid
@@ -546,6 +565,12 @@ def run() -> None:
         )
     elif vista == "historial":
         screen_historial.render()
+    elif vista == "admin_usuarios":
+        if _es_supervisor:
+            screen_admin_usuarios.render(plant_label=_plant_label)
+        else:
+            st.warning("Solo el jefe de turno puede administrar usuarios.")
+            st.session_state["vista_planta"] = "inicio"
     elif vista == "operacion" and st.session_state.get("df_trabajo") is not None:
         screen_operacion.render(
             archivo=archivo,

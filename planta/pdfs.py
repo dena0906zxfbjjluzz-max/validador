@@ -440,3 +440,97 @@ def generar_pdf_dashboard_turno(
     buffer.seek(0)
     return buffer
 
+
+
+def generar_pdf_informe_semanal(
+    informe: dict,
+    planta_nombre: str = "",
+    inspector: str = "",
+):
+    """PDF del informe semanal (7 días)."""
+    buffer = io.BytesIO()
+    doc = SimpleDocTemplate(
+        buffer,
+        pagesize=letter,
+        rightMargin=30,
+        leftMargin=30,
+        topMargin=30,
+        bottomMargin=30,
+    )
+    story = []
+    styles = getSampleStyleSheet()
+    titulo = ParagraphStyle(
+        "TituloSem",
+        parent=styles["Heading1"],
+        fontSize=15,
+        textColor=colors.HexColor("#1F4E78"),
+        spaceAfter=8,
+    )
+    story.append(Paragraph("<b>INFORME SEMANAL DE PLANTA</b>", titulo))
+    story.append(
+        Paragraph(
+            f"<b>Planta:</b> {planta_nombre or '—'} | "
+            f"<b>Periodo:</b> {informe.get('desde')} → {informe.get('hasta')} | "
+            f"<b>Estado:</b> {informe.get('estado')} | "
+            f"<b>Emitido:</b> {inspector or '—'}",
+            styles["Normal"],
+        )
+    )
+    story.append(Spacer(1, 12))
+    k = informe.get("kpis") or {}
+    datos = [
+        ["Indicador", "Valor"],
+        ["Lecturas de frío", str(k.get("lecturas_frio", 0))],
+        ["Rupturas de frío", str(k.get("rupturas_frio", 0))],
+        ["Sellos ECC", str(k.get("sellos_ecc", 0))],
+        ["Contenedores", str(k.get("contenedores", 0))],
+        ["Cámaras distintas", str(k.get("camaras_distintas", 0))],
+    ]
+    t = Table(datos, colWidths=[260, 220])
+    t.setStyle(
+        TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (1, 0), colors.HexColor("#1F4E78")),
+                ("TEXTCOLOR", (0, 0), (1, 0), colors.whitesmoke),
+                ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+                ("BACKGROUND", (0, 1), (-1, -1), colors.HexColor("#F2F2F2")),
+                ("GRID", (0, 0), (-1, -1), 1, colors.HexColor("#D9D9D9")),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+            ]
+        )
+    )
+    story.append(t)
+    story.append(Spacer(1, 14))
+
+    alertas = informe.get("alertas_ruptura") or []
+    story.append(Paragraph(f"<b>Rupturas registradas ({len(alertas)})</b>", styles["Heading3"]))
+    if alertas:
+        filas = [["Cámara", "Temp", "Producto", "Hora"]]
+        for a in alertas[:20]:
+            filas.append(
+                [
+                    str(a.get("camara") or ""),
+                    str(a.get("temperatura") or ""),
+                    str(a.get("producto") or ""),
+                    str(a.get("hora") or "")[:19],
+                ]
+            )
+        ta = Table(filas, colWidths=[120, 60, 140, 160])
+        ta.setStyle(
+            TableStyle(
+                [
+                    ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#8B1E1E")),
+                    ("TEXTCOLOR", (0, 0), (-1, 0), colors.whitesmoke),
+                    ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+                    ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#D9D9D9")),
+                    ("FONTSIZE", (0, 0), (-1, -1), 8),
+                ]
+            )
+        )
+        story.append(ta)
+    else:
+        story.append(Paragraph("Sin rupturas en el periodo.", styles["Normal"]))
+
+    doc.build(story)
+    buffer.seek(0)
+    return buffer

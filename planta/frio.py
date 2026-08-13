@@ -317,6 +317,21 @@ def registrar_control_frio(
             "payload": registro_remoto,
         }
 
+    # Cola offline si la nube falló (se reintenta desde Dashboard)
+    if not sb.get("ok") and not sb.get("ya_existia") and sb.get("configurado") is not False:
+        try:
+            from planta.cola_sync import encolar_sync
+
+            encolar_sync(
+                "control_frio",
+                registro_remoto,
+                error=str(sb.get("mensaje") or "fallo supabase"),
+            )
+            sb = dict(sb)
+            sb["encolado"] = True
+        except Exception:
+            pass
+
     # 3) Aviso WhatsApp / email solo en ruptura
     aviso = {"ok": False, "configurado": False, "mensaje": ""}
     if not en_rango:
