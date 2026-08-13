@@ -3196,8 +3196,11 @@ def generar_pdf_dashboard_turno(
     planta_nombre: str = "",
     inspector: str = "",
     rol: str = "",
+    firma_ECDSA: str = "",
+    llave_publica: str = "",
+    mensaje_firmado: str = "",
 ):
-    """PDF ejecutivo del dashboard de turno (KPIs + alertas de frío)."""
+    """PDF del dashboard de turno (KPIs + alertas). Con sello Ed25519 si hay firma."""
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(
         buffer,
@@ -3334,12 +3337,63 @@ def generar_pdf_dashboard_turno(
         story.append(tl)
 
     story.append(Spacer(1, 16))
-    story.append(
-        Paragraph(
-            "<i>Documento operativo de turno. No sustituye el reporte ejecutivo con sello Ed25519.</i>",
-            styles["Normal"],
+
+    firma = str(firma_ECDSA or "").strip()
+    pub = str(llave_publica or "").strip()
+    if firma and pub:
+        kpis = dash.get("kpis") or {}
+        mensaje_ref = mensaje_firmado or (
+            f"Dashboard turno {fecha_turno} | Planta: {planta_nombre or 'N/D'} | "
+            f"Estado: {estado} | Rupturas: {kpis.get('rupturas_frio', 0)} | "
+            f"Lecturas frío: {kpis.get('lecturas_frio', 0)} | "
+            f"Sellos ECC: {kpis.get('sellos_ecc', 0)} | Emisor: {inspector or 'N/D'}"
         )
-    )
+        bloque_verificacion = (
+            f"[ECC_MSG]{mensaje_ref}[/ECC_MSG] "
+            f"[ECC_SIG]{firma}[/ECC_SIG] "
+            f"[ECC_PUB]{pub}[/ECC_PUB] "
+            f"[ECC_HASH]{calcular_hash_reporte(mensaje_ref, firma, pub)}[/ECC_HASH]"
+        )
+        sello_data = [
+            [Paragraph("<b>Sello Criptográfico Ed25519 (dashboard de turno):</b>", styles["Normal"])],
+            [Paragraph(
+                f"<font size=7 face='Courier'><b>Mensaje firmado:</b> {mensaje_ref}</font>",
+                styles["Normal"],
+            )],
+            [Paragraph(
+                f"<font size=7 face='Courier'><b>Firma:</b> {firma}</font>",
+                styles["Normal"],
+            )],
+            [Paragraph(
+                f"<font size=7 face='Courier'><b>Llave Pública:</b> {pub}</font>",
+                styles["Normal"],
+            )],
+            [Paragraph(f"<font size=5 face='Courier'>{bloque_verificacion}</font>", styles["Normal"])],
+            [Paragraph(
+                "<i>Verifique este PDF en Verificación pública ECC. "
+                "Si el contenido firmado fue alterado, la verificación fallará.</i>",
+                styles["Normal"],
+            )],
+        ]
+        tabla_sello = Table(sello_data, colWidths=[500])
+        tabla_sello.setStyle(
+            TableStyle(
+                [
+                    ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#EDF2F7")),
+                    ("BOX", (0, 0), (-1, -1), 1, colors.HexColor("#1F4E78")),
+                    ("PADDING", (0, 0), (-1, -1), 8),
+                ]
+            )
+        )
+        story.append(tabla_sello)
+    else:
+        story.append(
+            Paragraph(
+                "<i>Documento sin sello Ed25519 (faltó LLAVE_PRIVADA o firma).</i>",
+                styles["Normal"],
+            )
+        )
+
     doc.build(story)
     buffer.seek(0)
     return buffer

@@ -1528,14 +1528,36 @@ if vista == "dashboard":
         else:
             st.caption("Aún no hay sellos archivados hoy.")
 
+    _insp_dash = st.session_state.get("fw_usuario") or "Inspector"
+    _k = dash.get("kpis") or {}
+    _msg_dash = (
+        f"Dashboard turno {dash.get('fecha')} | Planta: {_plant_label} | "
+        f"Estado: {dash.get('estado_turno')} | Rupturas: {_k.get('rupturas_frio', 0)} | "
+        f"Lecturas frío: {_k.get('lecturas_frio', 0)} | "
+        f"Sellos ECC: {_k.get('sellos_ecc', 0)} | Emisor: {_insp_dash}"
+    )
+    try:
+        _pub_dash, _sig_dash = motor_planta.firmar_reporte_ecc(_msg_dash)
+        _modo_dash = motor_planta.modo_firma_activo()
+        if _modo_dash == "real":
+            st.caption(f"PDF del turno con sello Ed25519 real · `{motor_planta.motor_activo()}`")
+        else:
+            st.caption("PDF del turno firmado en modo demo (revise LLAVE_PRIVADA en secrets).")
+    except Exception as _e_sig:
+        _pub_dash, _sig_dash = "", ""
+        st.caption(f"No se pudo firmar el PDF del turno: {_e_sig}")
+
     pdf_dash = funciones.generar_pdf_dashboard_turno(
         dash,
         planta_nombre=_plant_label,
-        inspector=st.session_state.get("fw_usuario") or "Inspector",
+        inspector=_insp_dash,
         rol=_rol_label,
+        firma_ECDSA=_sig_dash,
+        llave_publica=_pub_dash,
+        mensaje_firmado=_msg_dash,
     )
     st.download_button(
-        "Descargar PDF del turno",
+        "Descargar PDF del turno (firmado ECC)",
         data=pdf_dash,
         file_name=f"dashboard_turno_{dash.get('fecha', 'hoy')}.pdf",
         mime="application/pdf",
