@@ -290,11 +290,6 @@ def run() -> None:
         _nombres_p = listar_nombres_planta(accesos_planta)
         if _nombres_p:
             st.caption("Plantas configuradas: " + " · ".join(_nombres_p))
-        if _otp_on:
-            st.caption("OTP por correo: solo supervisor · operario entra con usuario/clave")
-        else:
-            st.caption("OTP desactivado o sin email SMTP configurado")
-        st.caption(f"Cortafuego · máx. {firewall.politica()['max_intentos']} intentos")
         st.stop()
 
     # Rol de sesión (compat: sesiones previas sin rol → supervisor)
